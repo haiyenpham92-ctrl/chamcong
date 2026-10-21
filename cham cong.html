@@ -1,0 +1,751 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Chấm Công QR</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<style>
+/* Layout: ứng dụng một cột kiểu điện thoại, thanh tab dưới đáy, thẻ số liệu ở đầu trang */
+:root{
+  --bg:#F1F5F3;--surface:#FFFFFF;--surface2:#E6EDEA;--fg:#13201B;--muted:#5A6B64;--line:#D3DDD8;
+  --accent:#0E6B5A;--accent-fg:#FFFFFF;--in:#0E6B5A;--out:#B4530A;--danger:#B42318;--ok-bg:#DDF1EA;--out-bg:#FBE9D6;
+  --font:'Be Vietnam Pro',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --radius:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1512;--surface:#15201C;--surface2:#1D2B26;--fg:#E6EFEB;--muted:#93A59D;--line:#2A3A34;
+    --accent:#3FC2A5;--accent-fg:#06231C;--in:#3FC2A5;--out:#F0A25A;--danger:#F97066;--ok-bg:#12332B;--out-bg:#3A2813;color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1512;--surface:#15201C;--surface2:#1D2B26;--fg:#E6EFEB;--muted:#93A59D;--line:#2A3A34;
+  --accent:#3FC2A5;--accent-fg:#06231C;--in:#3FC2A5;--out:#F0A25A;--danger:#F97066;--ok-bg:#12332B;--out-bg:#3A2813;color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{
+  background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;
+  padding-block:0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:520px;margin:0 auto;padding-block:20px 104px;display:flex;flex-direction:column;gap:16px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+h1,h2,h3{margin:0;text-wrap:balance;line-height:1.2}
+h1{font-size:1.5rem;font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.05rem;font-weight:600}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.muted{color:var(--muted)}
+.small{font-size:.85rem}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.who{display:flex;flex-direction:column;min-width:0}
+.who b{font-size:1.05rem;overflow-wrap:anywhere}
+
+.btn{appearance:none;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 16px;font-weight:600;cursor:pointer;min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
+.btn:hover{background:var(--surface2)}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.big{min-height:64px;font-size:1.1rem;border-radius:16px;width:100%}
+.btn.sm{min-height:36px;padding:6px 12px;font-size:.85rem;border-radius:10px}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,.tab:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+label{display:flex;flex-direction:column;gap:6px;font-weight:500;font-size:.9rem}
+input,select{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-height:46px;width:100%}
+input::placeholder{color:var(--muted)}
+
+/* Đăng nhập */
+.login{min-height:100vh;display:flex;align-items:center}
+.login .wrap{width:100%;padding-block:32px}
+.brandmark{display:flex;align-items:center;gap:12px}
+.mark{width:44px;height:44px;border-radius:12px;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;flex:none}
+.err{color:var(--danger);font-size:.88rem;font-weight:500;min-height:1.3em}
+
+/* Đồng hồ */
+.clock{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.clock .t{font-size:3rem;font-weight:600;letter-spacing:-.02em;line-height:1}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border-radius:999px;font-size:.85rem;font-weight:600;background:var(--surface2);color:var(--muted)}
+.chip.in{background:var(--ok-bg);color:var(--in)}
+.chip.out{background:var(--out-bg);color:var(--out)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;font-size:1.1rem}
+.tile .k{font-size:.74rem;color:var(--muted)}
+
+/* Danh sách ca */
+.rows{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:12px;padding:12px 0;border-top:1px solid var(--line);align-items:start}
+.row:first-child{border-top:0}
+.row .d{font-weight:600;line-height:1.25}
+.row .d small{display:block;color:var(--muted);font-weight:400;font-size:.78rem}
+.sess{display:flex;flex-direction:column;gap:2px;font-size:.92rem;min-width:0}
+.sess .open{color:var(--out);font-size:.82rem;font-family:var(--font)}
+.row .tot{font-weight:600;text-align:right}
+.row.empty .d,.row.empty .tot{color:var(--muted);font-weight:400}
+
+.seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface2);border-radius:12px;padding:4px;gap:4px}
+.seg button{border:0;background:transparent;border-radius:9px;padding:8px;font-weight:600;cursor:pointer;color:var(--muted);min-height:38px}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.nav .lbl{font-weight:600;text-align:center;flex:1;min-width:0}
+
+/* Admin: QR */
+.qrbox{background:#fff;border-radius:16px;padding:14px;align-self:center;width:min(100%,300px);aspect-ratio:1;border:1px solid var(--line)}
+.qrbox svg{display:block;width:100%;height:100%}
+.code{font-family:var(--mono);font-size:1.3rem;font-weight:600;letter-spacing:.12em;text-align:center}
+
+.emp{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 0;border-top:1px solid var(--line);align-items:center;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left;cursor:pointer;border-radius:0}
+.emp:first-child{border-top:0}
+.emp[aria-pressed="true"] .nm{color:var(--accent)}
+.emp .nm{font-weight:600;overflow-wrap:anywhere}
+
+/* Thanh tab */
+.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
+  padding-top:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));z-index:5}
+.tabs .in{max-width:520px;margin:0 auto;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
+.tab{appearance:none;border:0;background:transparent;border-radius:12px;padding:8px 4px;min-height:52px;cursor:pointer;color:var(--muted);font-weight:600;font-size:.78rem;display:flex;flex-direction:column;align-items:center;gap:2px}
+.tab svg{width:22px;height:22px}
+.tab[aria-current="page"]{color:var(--accent);background:var(--surface2)}
+
+/* Máy quét */
+.scan{position:fixed;inset:0;background:#000;z-index:20;display:flex;flex-direction:column;color:#fff;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.scan video{flex:1;min-height:0;width:100%;object-fit:cover;border-radius:16px;background:#111;margin-top:12px}
+.scan .frame{position:absolute;left:50%;top:44%;width:min(64vw,280px);aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid #fff;border-radius:20px;box-shadow:0 0 0 999px rgba(0,0,0,.45);pointer-events:none}
+.scan .bar{display:flex;flex-direction:column;gap:10px;padding-block:14px}
+.scan .msg{text-align:center;font-size:.92rem;min-height:2.7em}
+.scan .btn{background:#fff;color:#111;border-color:#fff}
+.scan .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.5)}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:30;max-width:min(92vw,420px);
+  padding:12px 16px;border-radius:14px;font-weight:600;background:var(--fg);color:var(--bg);box-shadow:0 6px 24px rgba(0,0,0,.25);text-align:center}
+.toast.bad{background:var(--danger);color:#fff}
+.toast.good{background:var(--accent);color:var(--accent-fg)}
+details summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}
+details summary::-webkit-details-marker{display:none}
+@media (prefers-reduced-motion:no-preference){.btn{transition:background .15s,filter .15s}}
+</style>
+
+<div id="app"></div>
+
+<div class="scan" id="scanner" hidden role="dialog" aria-label="Quét mã QR">
+  <video id="video" playsinline muted></video>
+  <div class="frame" aria-hidden="true"></div>
+  <div class="bar">
+    <div class="msg" id="scanMsg" aria-live="polite"></div>
+    <button class="btn" id="photoBtn" type="button">Chụp ảnh mã QR</button>
+    <button class="btn ghost" id="closeScan" type="button">Đóng</button>
+  </div>
+</div>
+<input type="file" id="photo" accept="image/*" capture="environment" hidden>
+<div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
+<canvas id="cv" hidden></canvas>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- Lưu trữ ---------- */
+var mem = {};
+function load(k, d){
+  try{ var v = localStorage.getItem(k); if(v != null) return JSON.parse(v); }catch(e){}
+  return (k in mem) ? mem[k] : d;
+}
+function save(k, v){
+  mem[k] = v;
+  try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){}
+}
+var K = {users:'cc_users', logs:'cc_logs', token:'cc_token', session:'cc_session'};
+
+function randToken(){
+  var a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s = '';
+  var arr = new Uint32Array(8);
+  try{ crypto.getRandomValues(arr); }catch(e){ for(var i=0;i<8;i++) arr[i] = Math.floor(Math.random()*4e9); }
+  for(var j=0;j<8;j++) s += a[arr[j] % a.length];
+  return s;
+}
+
+var state = {
+  users: load(K.users, null) || [
+    {u:'Admin', name:'Quản trị viên', p:'@bonamang', role:'admin'},
+    {u:'Hoangle', name:'Hoangle', p:'@123', role:'user'}
+  ],
+  logs: load(K.logs, []),
+  token: load(K.token, null),
+  me: load(K.session, null),
+  tab: 'home',
+  mode: 'day',
+  anchor: new Date(),
+  who: null,
+  loginErr: '',
+  confirmDel: null,
+  formErr: ''
+};
+if(!state.token){ state.token = randToken(); save(K.token, state.token); }
+save(K.users, state.users);
+// Đảm bảo hai tài khoản gốc luôn tồn tại
+(function(){
+  var need = [{u:'Admin', name:'Quản trị viên', p:'@bonamang', role:'admin'},{u:'Hoangle', name:'Hoangle', p:'@123', role:'user'}];
+  need.forEach(function(n){ if(!state.users.some(function(x){return x.u.toLowerCase()===n.u.toLowerCase();})) state.users.push(n); });
+  save(K.users, state.users);
+})();
+if(state.me && !findUser(state.me)) state.me = null;
+
+function findUser(u){ return state.users.filter(function(x){return x.u.toLowerCase()===String(u||'').toLowerCase();})[0]; }
+function me(){ return findUser(state.me); }
+function employees(){ return state.users.filter(function(x){return x.role!=='admin';}); }
+
+/* ---------- Thời gian ---------- */
+function p2(n){ return (n<10?'0':'')+n; }
+function dkey(ms){ var d = new Date(ms); return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()); }
+function dkeyD(d){ return dkey(d.getTime()); }
+function hm(ms){ var d = new Date(ms); return p2(d.getHours())+':'+p2(d.getMinutes()); }
+function dur(ms){
+  var m = Math.floor(ms/60000), h = Math.floor(m/60);
+  return h+'h '+p2(m%60)+'p';
+}
+var DOW = ['CN','T2','T3','T4','T5','T6','T7'];
+function dm(d){ return p2(d.getDate())+'/'+p2(d.getMonth()+1); }
+function startOfWeek(d){ var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); var wd = (x.getDay()+6)%7; x.setDate(x.getDate()-wd); return x; }
+function addDays(d,n){ var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate()+n); return x; }
+function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+/* ---------- Quy tắc tính công ---------- */
+// Lần quét 1 = vào, lần 2 = ra, lần 3 = vào, ... Chỉ cặp vào-ra đủ đôi mới được cộng.
+function eventsOf(user){
+  return state.logs.filter(function(l){return l.u===user;}).map(function(l){return l.t;}).sort(function(a,b){return a-b;});
+}
+function byDay(user){
+  var map = {};
+  eventsOf(user).forEach(function(t){ var k = dkey(t); (map[k] = map[k] || []).push(t); });
+  return map;
+}
+function sessionsOf(ev){
+  var s = [], total = 0;
+  for(var i=0;i<ev.length;i+=2){
+    if(i+1<ev.length){ var ms = ev[i+1]-ev[i]; s.push({in:ev[i], out:ev[i+1], ms:ms}); total += ms; }
+    else s.push({in:ev[i], out:null, ms:0});
+  }
+  return {sessions:s, total:total};
+}
+function statusToday(user){
+  var ev = byDay(user)[dkeyD(new Date())] || [];
+  return {inside: ev.length%2===1, count: ev.length, total: sessionsOf(ev).total};
+}
+function range(mode, anchor){
+  if(mode==='day'){ var a = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()); return {from:a, to:a}; }
+  if(mode==='week'){ var s = startOfWeek(anchor); return {from:s, to:addDays(s,6)}; }
+  return {from:new Date(anchor.getFullYear(), anchor.getMonth(), 1), to:new Date(anchor.getFullYear(), anchor.getMonth()+1, 0)};
+}
+function totalsFor(user, from, to){
+  var map = byDay(user), tot = 0, days = 0, scans = 0;
+  for(var d = new Date(from); d <= to; d = addDays(d,1)){
+    var ev = map[dkeyD(d)]; if(!ev) continue;
+    scans += ev.length;
+    var r = sessionsOf(ev); tot += r.total; if(r.total>0) days++;
+  }
+  return {total:tot, days:days, scans:scans};
+}
+
+/* ---------- Biểu tượng ---------- */
+var IC = {
+  scan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>',
+  list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 11h16"/></svg>',
+  qr:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2M14 20h2M20 14v2"/></svg>',
+  users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c1.8.7 3 2.3 3.5 5.2"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
+};
+
+/* ---------- Tạo mã QR (SVG) ---------- */
+function qrSvg(text){
+  // Lấy bộ mã hóa từ thư viện nội bộ bên dưới
+  var m = QR.make(text);
+  var n = m.length, q = 2, size = n + q*2, d = '';
+  for(var r=0;r<n;r++) for(var c=0;c<n;c++) if(m[r][c]) d += 'M'+(c+q)+' '+(r+q)+'h1v1h-1z';
+  return '<svg viewBox="0 0 '+size+' '+size+'" shape-rendering="crispEdges" role="img" aria-label="Mã QR chấm công"><rect width="'+size+'" height="'+size+'" fill="#fff"/><path d="'+d+'" fill="#000"/></svg>';
+}
+
+/* ---------- Giao diện ---------- */
+var app = document.getElementById('app');
+var clockTimer = null;
+
+function render(){
+  if(clockTimer){ clearInterval(clockTimer); clockTimer = null; }
+  var u = me();
+  if(!u){ app.innerHTML = loginView(); bindLogin(); return; }
+  var body = u.role==='admin' ? adminBody(u) : userBody(u);
+  app.innerHTML = '<div class="wrap">'+header(u)+body+'</div>'+tabBar(u);
+  var c = document.getElementById('clk');
+  if(c){ tick(); clockTimer = setInterval(tick, 1000); }
+}
+function tick(){
+  var c = document.getElementById('clk'); if(!c) return;
+  var d = new Date(); c.textContent = p2(d.getHours())+':'+p2(d.getMinutes())+':'+p2(d.getSeconds());
+}
+
+function loginView(){
+  return '<div class="login"><div class="wrap">'+
+    '<div class="brandmark"><div class="mark">'+IC.clock+'</div><div><h1>Chấm Công</h1><div class="muted small">Quét mã QR để vào ca và ra ca</div></div></div>'+
+    '<form class="card" id="loginForm" autocomplete="on">'+
+      '<label for="lu">Tên đăng nhập<input id="lu" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>'+
+      '<label for="lp">Mật khẩu<input id="lp" name="password" type="password" autocomplete="current-password" required></label>'+
+      '<div class="err" id="lerr" role="alert">'+esc(state.loginErr)+'</div>'+
+      '<button class="btn primary big" type="submit">Đăng nhập</button>'+
+    '</form></div></div>';
+}
+function bindLogin(){
+  var f = document.getElementById('loginForm');
+  f.addEventListener('submit', function(e){
+    e.preventDefault();
+    var un = document.getElementById('lu').value.trim(), pw = document.getElementById('lp').value;
+    var u = findUser(un);
+    if(u && u.p === pw){
+      state.me = u.u; state.loginErr = ''; state.tab = (u.role==='admin') ? 'qr' : 'home';
+      state.mode = 'day'; state.anchor = new Date(); state.who = null; save(K.session, state.me); render();
+    }else{
+      state.loginErr = 'Sai tên đăng nhập hoặc mật khẩu.';
+      document.getElementById('lerr').textContent = state.loginErr;
+      document.getElementById('lp').value = ''; document.getElementById('lp').focus();
+    }
+  });
+}
+
+function header(u){
+  return '<div class="top"><div class="who"><span class="eyebrow">'+(u.role==='admin'?'Quản trị':'Nhân viên')+'</span><b>'+esc(u.name)+'</b></div>'+
+    '<button class="btn sm" data-act="logout" type="button">Đăng xuất</button></div>';
+}
+function tabBar(u){
+  var items = u.role==='admin'
+    ? [['qr','Mã QR',IC.qr],['track','Theo dõi',IC.list],['staff','Nhân viên',IC.users]]
+    : [['home','Chấm công',IC.scan],['hist','Lịch sử',IC.list]];
+  return '<nav class="tabs" aria-label="Điều hướng"><div class="in">'+items.map(function(i){
+    return '<button class="tab" type="button" data-act="tab" data-v="'+i[0]+'"'+(state.tab===i[0]?' aria-current="page"':'')+'>'+i[2]+'<span>'+i[1]+'</span></button>';
+  }).join('')+'</div></nav>';
+}
+
+/* --- Nhân viên --- */
+function userBody(u){
+  if(state.tab==='hist') return historyCard(u.u);
+  var st = statusToday(u.u), now = new Date();
+  var wk = totalsFor(u.u, startOfWeek(now), addDays(startOfWeek(now),6));
+  var mo = totalsFor(u.u, new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth()+1, 0));
+  var chip = st.inside
+    ? '<span class="chip in"><span class="dot"></span>Đang trong ca</span>'
+    : '<span class="chip">'+(st.count? 'Đã ra ca' : 'Chưa vào ca')+'</span>';
+  var evs = byDay(u.u)[dkeyD(now)] || [];
+  var todayList = evs.length ? '<div class="rows">'+sessionRows(evs)+'</div>' : '<div class="muted small">Hôm nay chưa có lượt quét nào.</div>';
+  return '<div class="card">'+
+      '<div class="clock"><span class="eyebrow">'+DOW[now.getDay()]+', '+dm(now)+'/'+now.getFullYear()+'</span><span class="t num" id="clk">--:--:--</span>'+chip+'</div>'+
+      '<button class="btn primary big" data-act="scan" type="button">'+IC.scan.replace('<svg','<svg width="26" height="26"')+'Quét mã QR chấm công</button>'+
+      '<div class="muted small">Lần quét đầu tiên là giờ vào, lần thứ hai là giờ ra. Chỉ có giờ vào mà chưa có giờ ra thì chưa được tính.</div>'+
+      '<details><summary><span class="small muted">Nhập mã bằng tay</span><span class="muted">▾</span></summary>'+
+        '<form id="manual" style="display:flex;gap:8px;margin-top:10px"><input id="mcode" aria-label="Mã chấm công" placeholder="Ví dụ: K7M2Q9XA" autocapitalize="characters" spellcheck="false"><button class="btn" type="submit">Gửi</button></form>'+
+      '</details>'+
+    '</div>'+
+    '<div class="tiles">'+
+      '<div class="tile"><span class="v">'+dur(st.total)+'</span><span class="k">Hôm nay</span></div>'+
+      '<div class="tile"><span class="v">'+dur(wk.total)+'</span><span class="k">Tuần này</span></div>'+
+      '<div class="tile"><span class="v">'+dur(mo.total)+'</span><span class="k">Tháng này</span></div>'+
+    '</div>'+
+    '<div class="card"><h2>Lượt quét hôm nay</h2>'+todayList+'</div>';
+}
+function sessionRows(ev){
+  var r = sessionsOf(ev);
+  return r.sessions.map(function(s){
+    return '<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><div class="sess num">'+
+      (s.out ? hm(s.in)+' → '+hm(s.out) : hm(s.in)+' → <span class="open">chưa có giờ ra, chưa tính</span>')+
+      '</div><div class="tot num">'+(s.out?dur(s.ms):'—')+'</div></div>';
+  }).join('');
+}
+
+/* --- Lịch sử dùng chung --- */
+function historyCard(user){
+  var rg = range(state.mode, state.anchor);
+  var t = totalsFor(user, rg.from, rg.to);
+  var label;
+  if(state.mode==='day') label = DOW[rg.from.getDay()]+', '+dm(rg.from)+'/'+rg.from.getFullYear();
+  else if(state.mode==='week') label = dm(rg.from)+' – '+dm(rg.to)+'/'+rg.to.getFullYear();
+  else label = 'Tháng '+(rg.from.getMonth()+1)+'/'+rg.from.getFullYear();
+  var map = byDay(user), rows = '';
+  for(var d = new Date(rg.from); d <= rg.to; d = addDays(d,1)){
+    var ev = map[dkeyD(d)];
+    var dlab = '<div class="d">'+DOW[d.getDay()]+' '+dm(d)+'</div>';
+    if(!ev){
+      if(state.mode==='month') continue;
+      rows += '<div class="row empty">'+dlab.replace('class="d"','class="d"')+'<div class="sess">Không có lượt quét</div><div class="tot num">—</div></div>';
+      continue;
+    }
+    var r = sessionsOf(ev);
+    var lines = r.sessions.map(function(s){
+      return '<div class="num">'+(s.out ? hm(s.in)+' → '+hm(s.out)+' <span class="muted">('+dur(s.ms)+')</span>' : hm(s.in)+' → <span class="open">chưa có giờ ra, chưa tính</span>')+'</div>';
+    }).join('');
+    rows += '<div class="row">'+dlab+'<div class="sess">'+lines+'</div><div class="tot num">'+dur(r.total)+'</div></div>';
+  }
+  if(!rows) rows = '<div class="muted small" style="padding-top:4px">Chưa có dữ liệu chấm công trong khoảng này.</div>';
+  var modes = [['day','Ngày'],['week','Tuần'],['month','Tháng']];
+  return '<div class="card">'+
+    '<div class="seg" role="group" aria-label="Khoảng thời gian">'+modes.map(function(m){return '<button type="button" data-act="mode" data-v="'+m[0]+'" aria-pressed="'+(state.mode===m[0])+'">'+m[1]+'</button>';}).join('')+'</div>'+
+    '<div class="nav"><button class="btn sm" data-act="prev" type="button" aria-label="Trước">‹</button><div class="lbl">'+label+'</div><button class="btn sm" data-act="next" type="button" aria-label="Sau">›</button></div>'+
+    '<div style="display:flex;justify-content:center"><button class="btn sm" data-act="today" type="button">Về hôm nay</button></div>'+
+    '<div class="tiles">'+
+      '<div class="tile"><span class="v">'+dur(t.total)+'</span><span class="k">Tổng giờ làm</span></div>'+
+      '<div class="tile"><span class="v">'+t.days+'</span><span class="k">Ngày có công</span></div>'+
+      '<div class="tile"><span class="v">'+t.scans+'</span><span class="k">Lượt quét</span></div>'+
+    '</div>'+
+    '<div class="rows">'+rows+'</div></div>';
+}
+
+/* --- Quản trị --- */
+function adminBody(u){
+  if(state.tab==='track') return trackBody();
+  if(state.tab==='staff') return staffBody();
+  return '<div class="card">'+
+    '<div><h2>Mã QR chấm công</h2><div class="muted small">Hiển thị mã này tại nơi làm việc. Nhân viên quét bằng điện thoại để vào ca hoặc ra ca.</div></div>'+
+    '<div class="qrbox">'+qrSvg('CHAMCONG|'+state.token)+'</div>'+
+    '<div class="code">'+esc(state.token)+'</div>'+
+    '<button class="btn primary" data-act="newtoken" type="button">Tạo mã mới</button>'+
+    '<div class="muted small">Sau khi tạo mã mới, mã cũ không còn dùng được. Hãy thay mã QR đang dán tại nơi làm việc.</div>'+
+  '</div>';
+}
+function trackBody(){
+  var emps = employees();
+  if(!state.who || !findUser(state.who) || findUser(state.who).role==='admin') state.who = emps.length ? emps[0].u : null;
+  var list = emps.length ? '<div class="rows">'+emps.map(function(e){
+    var st = statusToday(e.u);
+    return '<button class="emp" type="button" data-act="who" data-v="'+esc(e.u)+'" aria-pressed="'+(state.who===e.u)+'">'+
+      '<span class="nm">'+esc(e.name)+'</span>'+
+      '<span class="chip '+(st.inside?'in':'')+'"><span class="dot"></span>'+(st.inside?'Đang trong ca':(st.count?'Đã ra ca':'Chưa vào'))+'</span>'+
+      '<span class="muted small num">Hôm nay: '+dur(st.total)+'</span></button>';
+  }).join('')+'</div>' : '<div class="muted small">Chưa có nhân viên.</div>';
+  var detail = state.who ? '<div class="eyebrow" style="padding:4px 2px 0">Chi tiết: '+esc(findUser(state.who).name)+'</div>'+historyCard(state.who) : '';
+  return '<div class="card"><h2>Nhân viên hôm nay</h2>'+list+'</div>'+detail;
+}
+function staffBody(){
+  var rows = employees().map(function(e){
+    var arm = state.confirmDel===e.u;
+    return '<div class="row" style="grid-template-columns:minmax(0,1fr) auto;align-items:center"><div><div class="d">'+esc(e.name)+'</div><small class="muted">Tên đăng nhập: '+esc(e.u)+'</small></div>'+
+      '<button class="btn sm danger" type="button" data-act="del" data-v="'+esc(e.u)+'">'+(arm?'Bấm lại để xóa':'Xóa')+'</button></div>';
+  }).join('') || '<div class="muted small">Chưa có nhân viên.</div>';
+  return '<div class="card"><h2>Danh sách nhân viên</h2><div class="rows">'+rows+'</div></div>'+
+    '<form class="card" id="addForm" autocomplete="off"><h2>Thêm nhân viên</h2>'+
+      '<label for="nu">Tên đăng nhập<input id="nu" autocapitalize="none" spellcheck="false" required></label>'+
+      '<label for="np">Mật khẩu<input id="np" required></label>'+
+      '<div class="err" role="alert">'+esc(state.formErr)+'</div>'+
+      '<button class="btn primary" type="submit">Thêm tài khoản</button></form>';
+}
+
+/* ---------- Chấm công ---------- */
+function handleScan(raw){
+  var u = me(); if(!u || u.role==='admin') return {ok:false, msg:'Chỉ tài khoản nhân viên mới chấm công được.'};
+  var t = String(raw||'').trim(), code = t.indexOf('CHAMCONG|')===0 ? t.slice(9) : t;
+  if(code.toUpperCase() !== state.token) return {ok:false, msg:'Mã QR không đúng hoặc đã được thay mới.'};
+  var evs = eventsOf(u.u), last = evs[evs.length-1], now = Date.now();
+  if(last && now-last < 15000) return {ok:false, msg:'Bạn vừa quét xong. Chờ vài giây rồi thử lại.'};
+  var today = byDay(u.u)[dkeyD(new Date())] || [];
+  var isIn = today.length%2===0;
+  state.logs.push({u:u.u, t:now}); save(K.logs, state.logs);
+  if(isIn) return {ok:true, msg:'Đã ghi giờ vào lúc '+hm(now)};
+  var tot = sessionsOf(byDay(u.u)[dkeyD(new Date())]).total;
+  return {ok:true, msg:'Đã ghi giờ ra lúc '+hm(now)+'. Hôm nay: '+dur(tot)};
+}
+var toastTimer;
+function toast(msg, kind){
+  var el = document.getElementById('toast'); el.textContent = msg; el.className = 'toast '+(kind||''); el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(function(){ el.hidden = true; }, 4200);
+}
+function afterScan(res){
+  closeScanner();
+  toast(res.msg, res.ok?'good':'bad');
+  state.tab = 'home'; render();
+}
+
+/* ---------- Máy quét ---------- */
+var scanEl = document.getElementById('scanner'), video = document.getElementById('video'), msgEl = document.getElementById('scanMsg');
+var cv = document.getElementById('cv'), ctx = cv.getContext('2d', {willReadFrequently:true});
+var stream = null, scanning = false, detector = null;
+try{ if('BarcodeDetector' in window) detector = new BarcodeDetector({formats:['qr_code']}); }catch(e){ detector = null; }
+
+function decodeImageData(data, w, h, both){
+  if(typeof jsQR === 'function'){
+    var r = jsQR(data, w, h, {inversionAttempts: both?'attemptBoth':'dontInvert'});
+    return r ? r.data : null;
+  }
+  return null;
+}
+function openScanner(){
+  scanEl.hidden = false; msgEl.textContent = 'Đang mở camera…';
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    msgEl.textContent = 'Không dùng được camera trực tiếp ở đây. Bấm “Chụp ảnh mã QR” bên dưới.'; return;
+  }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false}).then(function(s){
+    stream = s; video.srcObject = s; return video.play();
+  }).then(function(){
+    scanning = true; msgEl.textContent = 'Đưa mã QR vào giữa khung'; loop();
+  }).catch(function(){
+    msgEl.textContent = 'Không dùng được camera trực tiếp ở đây. Bấm “Chụp ảnh mã QR” bên dưới.';
+  });
+}
+function closeScanner(){
+  scanning = false;
+  if(stream){ stream.getTracks().forEach(function(t){ t.stop(); }); stream = null; }
+  try{ video.srcObject = null; }catch(e){}
+  scanEl.hidden = true;
+}
+function loop(){
+  if(!scanning) return;
+  if(video.readyState >= 2 && video.videoWidth){
+    var sc = Math.min(1, 640/video.videoWidth), w = Math.round(video.videoWidth*sc), h = Math.round(video.videoHeight*sc);
+    cv.width = w; cv.height = h; ctx.drawImage(video, 0, 0, w, h);
+    var txt = null;
+    try{ txt = decodeImageData(ctx.getImageData(0,0,w,h).data, w, h, false); }catch(e){}
+    if(txt){ scanning = false; afterScan(handleScan(txt)); return; }
+    if(detector){
+      detector.detect(video).then(function(r){
+        if(scanning && r && r[0] && r[0].rawValue){ scanning = false; afterScan(handleScan(r[0].rawValue)); }
+      }).catch(function(){});
+    }
+  }
+  setTimeout(function(){ requestAnimationFrame(loop); }, 120);
+}
+function decodeFile(file){
+  var url = URL.createObjectURL(file), img = new Image();
+  img.onload = function(){
+    var sc = Math.min(1, 1200/Math.max(img.width, img.height)), w = Math.round(img.width*sc), h = Math.round(img.height*sc);
+    cv.width = w; cv.height = h; ctx.drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    var txt = null;
+    try{ txt = decodeImageData(ctx.getImageData(0,0,w,h).data, w, h, true); }catch(e){}
+    if(txt){ afterScan(handleScan(txt)); return; }
+    if(detector){
+      detector.detect(cv).then(function(r){
+        if(r && r[0] && r[0].rawValue) afterScan(handleScan(r[0].rawValue));
+        else failPhoto();
+      }).catch(failPhoto);
+    }else failPhoto();
+  };
+  img.onerror = function(){ URL.revokeObjectURL(url); failPhoto(); };
+  img.src = url;
+}
+function failPhoto(){
+  if(scanEl.hidden){ toast('Không đọc được mã QR trong ảnh. Chụp gần và rõ hơn.', 'bad'); }
+  else msgEl.textContent = 'Không đọc được mã QR trong ảnh. Chụp gần và rõ hơn rồi thử lại.';
+}
+
+document.getElementById('photoBtn').addEventListener('click', function(){ document.getElementById('photo').click(); });
+document.getElementById('closeScan').addEventListener('click', closeScanner);
+document.getElementById('photo').addEventListener('change', function(e){
+  var f = e.target.files && e.target.files[0]; e.target.value = '';
+  if(f) decodeFile(f);
+});
+
+/* ---------- Sự kiện chung ---------- */
+function shift(dir){
+  var a = state.anchor;
+  if(state.mode==='day') state.anchor = addDays(a, dir);
+  else if(state.mode==='week') state.anchor = addDays(a, 7*dir);
+  else state.anchor = new Date(a.getFullYear(), a.getMonth()+dir, 1);
+}
+app.addEventListener('click', function(e){
+  var b = e.target.closest('[data-act]'); if(!b) return;
+  var act = b.getAttribute('data-act'), v = b.getAttribute('data-v');
+  if(act==='logout'){ state.me = null; save(K.session, null); state.loginErr=''; render(); return; }
+  if(act==='tab'){ state.tab = v; state.confirmDel = null; state.formErr=''; render(); return; }
+  if(act==='scan'){ openScanner(); return; }
+  if(act==='mode'){ state.mode = v; render(); return; }
+  if(act==='prev'){ shift(-1); render(); return; }
+  if(act==='next'){ shift(1); render(); return; }
+  if(act==='today'){ state.anchor = new Date(); render(); return; }
+  if(act==='who'){ state.who = v; render(); return; }
+  if(act==='newtoken'){ state.token = randToken(); save(K.token, state.token); render(); toast('Đã tạo mã QR mới. Mã cũ không còn dùng được.', 'good'); return; }
+  if(act==='del'){
+    if(state.confirmDel===v){
+      state.users = state.users.filter(function(x){return x.u!==v;}); save(K.users, state.users);
+      state.logs = state.logs.filter(function(l){return l.u!==v;}); save(K.logs, state.logs);
+      state.confirmDel = null; if(state.who===v) state.who = null;
+    }else state.confirmDel = v;
+    render(); return;
+  }
+});
+app.addEventListener('submit', function(e){
+  if(e.target.id==='manual'){
+    e.preventDefault();
+    var inp = document.getElementById('mcode'); var res = handleScan(inp.value);
+    toast(res.msg, res.ok?'good':'bad'); if(res.ok) render(); else inp.select();
+  }
+  if(e.target.id==='addForm'){
+    e.preventDefault();
+    var un = document.getElementById('nu').value.trim(), pw = document.getElementById('np').value;
+    if(findUser(un)){ state.formErr = 'Tên đăng nhập này đã tồn tại.'; render(); return; }
+    if(!un || !pw){ state.formErr = 'Nhập đủ tên đăng nhập và mật khẩu.'; render(); return; }
+    state.users.push({u:un, name:un, p:pw, role:'user'}); save(K.users, state.users);
+    state.formErr = ''; render(); toast('Đã thêm nhân viên '+un, 'good');
+  }
+});
+
+/* ---------- Bộ mã hóa QR (phiên bản 1–10, mức sửa lỗi M, chế độ byte) ---------- */
+var QR = (function(){
+  var EXP = new Array(256), LOG = new Array(256), i, x = 1;
+  for(i=0;i<255;i++){ EXP[i] = x; LOG[x] = i; x <<= 1; if(x & 256) x ^= 0x11d; }
+  EXP[255] = EXP[0];
+  function mul(a,b){ return (a===0||b===0) ? 0 : EXP[(LOG[a]+LOG[b])%255]; }
+  function rsGen(n){
+    var g = [1];
+    for(var k=0;k<n;k++){
+      var ng = new Array(g.length+1).fill(0);
+      for(var j=0;j<g.length;j++){ ng[j] ^= g[j]; ng[j+1] ^= mul(g[j], EXP[k]); }
+      g = ng;
+    }
+    return g;
+  }
+  function rsEnc(data, n){
+    var g = rsGen(n), res = data.concat(new Array(n).fill(0));
+    for(var a=0;a<data.length;a++){
+      var c = res[a]; if(c===0) continue;
+      for(var b=0;b<g.length;b++) res[a+b] ^= mul(g[b], c);
+    }
+    return res.slice(data.length);
+  }
+  // [ecc/khối, khối nhóm1, dữ liệu/khối nhóm1, khối nhóm2, dữ liệu/khối nhóm2] cho mức M
+  var TAB = {1:[10,1,16,0,0],2:[16,1,28,0,0],3:[26,1,44,0,0],4:[18,2,32,0,0],5:[24,2,43,0,0],6:[16,4,27,0,0],7:[18,4,31,0,0],8:[22,2,38,2,39],9:[22,3,36,2,37],10:[26,4,43,1,44]};
+  var ALIGN = {1:[],2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],7:[6,22,38],8:[6,24,42],9:[6,26,46],10:[6,28,50]};
+  function cap(v){ var t = TAB[v]; return t[1]*t[2] + t[3]*t[4]; }
+  function bch(d, g, gl){ var r = d << (gl-1 > 0 ? 0 : 0); return r; }
+  function fmtBits(mask){
+    var d = (0 << 3) | mask; // M = 00
+    var v = d << 10;
+    for(var k=14;k>=10;k--) if(v & (1<<k)) v ^= 0x537 << (k-10);
+    return ((d << 10) | v) ^ 0x5412;
+  }
+  function verBits(ver){
+    var v = ver << 12;
+    for(var k=17;k>=12;k--) if(v & (1<<k)) v ^= 0x1f25 << (k-12);
+    return (ver << 12) | v;
+  }
+  function utf8(s){
+    var out = [];
+    for(var k=0;k<s.length;k++){
+      var c = s.charCodeAt(k);
+      if(c<128) out.push(c);
+      else if(c<2048) out.push(192|(c>>6), 128|(c&63));
+      else out.push(224|(c>>12), 128|((c>>6)&63), 128|(c&63));
+    }
+    return out;
+  }
+  function make(text){
+    var bytes = utf8(text), ver = 1;
+    while(ver<=10 && cap(ver) < bytes.length + 3) ver++;
+    if(ver>10) throw new Error('too long');
+    var t = TAB[ver], total = cap(ver), bits = [];
+    function put(v, n){ for(var k=n-1;k>=0;k--) bits.push((v>>k)&1); }
+    put(4,4); put(bytes.length, ver<10?8:16);
+    bytes.forEach(function(b){ put(b,8); });
+    var maxb = total*8;
+    for(var z=0;z<4 && bits.length<maxb;z++) bits.push(0);
+    while(bits.length%8) bits.push(0);
+    var cw = [];
+    for(var q=0;q<bits.length;q+=8){ var by = 0; for(var w=0;w<8;w++) by = (by<<1)|bits[q+w]; cw.push(by); }
+    for(var pad=0; cw.length<total; pad++) cw.push(pad%2?17:236);
+    // chia khối
+    var blocks = [], ecs = [], pos = 0, maxd = 0;
+    [[t[1],t[2]],[t[3],t[4]]].forEach(function(g){
+      for(var k=0;k<g[0];k++){ var d = cw.slice(pos, pos+g[1]); pos += g[1]; blocks.push(d); ecs.push(rsEnc(d, t[0])); if(g[1]>maxd) maxd = g[1]; }
+    });
+    var fin = [];
+    for(var a=0;a<maxd;a++) blocks.forEach(function(b){ if(a<b.length) fin.push(b[a]); });
+    for(var e=0;e<t[0];e++) ecs.forEach(function(b){ fin.push(b[e]); });
+    var fb = []; fin.forEach(function(b){ for(var k=7;k>=0;k--) fb.push((b>>k)&1); });
+    var rem = {1:0,2:7,3:7,4:7,5:7,6:7,7:0,8:0,9:0,10:0}[ver]; for(var r=0;r<rem;r++) fb.push(0);
+
+    var n = ver*4+17, best = null, bestScore = 1e9;
+    for(var mask=0;mask<8;mask++){
+      var mx = build(n, ver, fb, mask);
+      var sc = penalty(mx, n);
+      if(sc < bestScore){ bestScore = sc; best = mx; }
+    }
+    return best;
+  }
+  function build(n, ver, fb, mask){
+    var m = [], f = [], r, c;
+    for(r=0;r<n;r++){ m.push(new Array(n).fill(false)); f.push(new Array(n).fill(false)); }
+    function set(r,c,v){ m[r][c] = v; f[r][c] = true; }
+    function finder(r0,c0){
+      for(var dr=-1;dr<=7;dr++) for(var dc=-1;dc<=7;dc++){
+        var rr = r0+dr, cc = c0+dc; if(rr<0||cc<0||rr>=n||cc>=n) continue;
+        var on = (dr>=0&&dr<=6&&(dc===0||dc===6)) || (dc>=0&&dc<=6&&(dr===0||dr===6)) || (dr>=2&&dr<=4&&dc>=2&&dc<=4);
+        set(rr,cc,on);
+      }
+    }
+    finder(0,0); finder(0,n-7); finder(n-7,0);
+    var al = ALIGN[ver];
+    al.forEach(function(ar){ al.forEach(function(ac){
+      if((ar===6&&ac===6)||(ar===6&&ac===al[al.length-1])||(ar===al[al.length-1]&&ac===6)) return;
+      for(var dr=-2;dr<=2;dr++) for(var dc=-2;dc<=2;dc++) set(ar+dr, ac+dc, Math.max(Math.abs(dr),Math.abs(dc))!==1);
+    }); });
+    for(var k=8;k<n-8;k++){ if(!f[6][k]) set(6,k,k%2===0); if(!f[k][6]) set(k,6,k%2===0); }
+    set(n-8, 8, true);
+    // vùng dành cho thông tin định dạng
+    for(k=0;k<9;k++){ if(!f[8][k]) set(8,k,false); if(!f[k][8]) set(k,8,false); }
+    for(k=0;k<8;k++){ if(!f[8][n-1-k]) set(8,n-1-k,false); if(!f[n-1-k][8]) set(n-1-k,8,false); }
+    if(ver>=7){
+      var vb = verBits(ver);
+      for(k=0;k<18;k++){ var bit = ((vb>>k)&1)===1, a = Math.floor(k/3), b = k%3 + n-11; set(a,b,bit); set(b,a,bit); }
+    }
+    // dữ liệu
+    var idx = 0, up = true;
+    for(c=n-1;c>0;c-=2){
+      if(c===6) c--;
+      for(var s=0;s<n;s++){
+        r = up ? n-1-s : s;
+        for(var dc2=0;dc2<2;dc2++){
+          var cc2 = c-dc2; if(f[r][cc2]) continue;
+          var bit2 = idx<fb.length ? fb[idx]===1 : false; idx++;
+          var inv = false;
+          switch(mask){
+            case 0: inv = (r+cc2)%2===0; break;
+            case 1: inv = r%2===0; break;
+            case 2: inv = cc2%3===0; break;
+            case 3: inv = (r+cc2)%3===0; break;
+            case 4: inv = (Math.floor(r/2)+Math.floor(cc2/3))%2===0; break;
+            case 5: inv = (r*cc2)%2+(r*cc2)%3===0; break;
+            case 6: inv = ((r*cc2)%2+(r*cc2)%3)%2===0; break;
+            case 7: inv = ((r+cc2)%2+(r*cc2)%3)%2===0; break;
+          }
+          m[r][cc2] = inv ? !bit2 : bit2;
+        }
+      }
+      up = !up;
+    }
+    // thông tin định dạng
+    var fbits = fmtBits(mask);
+    for(k=0;k<15;k++){
+      var bt = ((fbits>>k)&1)===1;
+      if(k<6) m[k][8] = bt; else if(k<8) m[k+1][8] = bt; else m[n-15+k][8] = bt;
+      if(k<8) m[8][n-1-k] = bt; else if(k<9) m[8][15-k] = bt; else m[8][15-k-1] = bt;
+    }
+    m[n-8][8] = true;
+    return m;
+  }
+  function penalty(m, n){
+    var p = 0, r, c, run, k;
+    for(r=0;r<n;r++){ run = 1; for(c=1;c<n;c++){ if(m[r][c]===m[r][c-1]) run++; else { if(run>=5) p += run-2; run = 1; } } if(run>=5) p += run-2; }
+    for(c=0;c<n;c++){ run = 1; for(r=1;r<n;r++){ if(m[r][c]===m[r-1][c]) run++; else { if(run>=5) p += run-2; run = 1; } } if(run>=5) p += run-2; }
+    for(r=0;r<n-1;r++) for(c=0;c<n-1;c++){ var v = m[r][c]; if(v===m[r][c+1]&&v===m[r+1][c]&&v===m[r+1][c+1]) p += 3; }
+    var dark = 0; for(r=0;r<n;r++) for(c=0;c<n;c++) if(m[r][c]) dark++;
+    p += Math.floor(Math.abs(dark*100/(n*n)-50)/5)*10;
+    return p;
+  }
+  return {make:make};
+})();
+
+render();
+})();
+</script>
+
+</body></html>
