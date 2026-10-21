@@ -145,6 +145,8 @@ input::placeholder{color:var(--muted)}
 .ricon{width:68px;height:68px;border-radius:50%;display:grid;place-items:center;font-size:2.2rem;font-weight:700;color:#fff;background:var(--danger);line-height:1}
 .result.good .ricon{background:var(--accent);color:var(--accent-fg)}
 .rbtns{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:8px}
+.syncline{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:-8px}
+.syncline.bad{color:var(--danger)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:30;max-width:min(92vw,420px);
   padding:12px 16px;border-radius:14px;font-weight:600;background:var(--fg);color:var(--bg);box-shadow:0 6px 24px rgba(0,0,0,.25);text-align:center}
 .toast.bad{background:var(--danger);color:#fff}
@@ -205,6 +207,10 @@ function randToken(){
   return s;
 }
 
+/* Dán địa chỉ Web app của Google Apps Script (kết thúc bằng /exec) vào giữa hai dấu nháy.
+   Để trống thì app chạy chế độ thử, dữ liệu chỉ lưu trên từng điện thoại. */
+var API_URL = 'https://script.google.com/macros/s/AKfycbzU4EX4rZ6qNosQgeFFYuYwa-vcO02f03PfG8XtZxes67YvdgGDLKywsU6TkPyssRtEUA/exec';
+var REMOTE = !!API_URL;
 var DEFAULT_TOKEN = 'CONG2026';
 var state = {
   users: load(K.users, null) || [
@@ -220,20 +226,70 @@ var state = {
   who: null,
   loginErr: '',
   confirmDel: null,
-  formErr: ''
+  formErr: '',
+  cred: null,
+  sync: {busy:false, err:'', at:null}
 };
-if(!state.token){ state.token = DEFAULT_TOKEN; save(K.token, state.token); }
-save(K.users, state.users);
-// Đảm bảo hai tài khoản gốc luôn tồn tại
-(function(){
-  var need = [{u:'Admin', name:'Quản trị viên', p:'@bonamang', role:'admin'},{u:'Hoangle', name:'Hoangle', p:'@123', role:'user'}];
-  need.forEach(function(n){ if(!state.users.some(function(x){return x.u.toLowerCase()===n.u.toLowerCase();})) state.users.push(n); });
+if(REMOTE){
+  // Chế độ máy chủ: dữ liệu nằm trong Google Sheet, trên máy chỉ nhớ phiên đăng nhập
+  var sess = load(K.session, null);
+  if(sess && typeof sess === 'object' && sess.u && sess.p){
+    state.cred = {u:sess.u, p:sess.p}; state.me = sess.u;
+    state.users = [{u:sess.u, name:sess.name||sess.u, role:sess.role||'user'}];
+  }else{ state.cred = null; state.me = null; state.users = []; }
+  state.logs = []; state.token = null;
+}else{
+  if(!state.token){ state.token = DEFAULT_TOKEN; save(K.token, state.token); }
   save(K.users, state.users);
-})();
-if(state.me && !findUser(state.me)) state.me = null;
+  // Đảm bảo hai tài khoản gốc luôn tồn tại
+  (function(){
+    var need = [{u:'Admin', name:'Quản trị viên', p:'@bonamang', role:'admin'},{u:'Hoangle', name:'Hoangle', p:'@123', role:'user'}];
+    need.forEach(function(n){ if(!state.users.some(function(x){return x.u.toLowerCase()===n.u.toLowerCase();})) state.users.push(n); });
+    save(K.users, state.users);
+  })();
+  if(typeof state.me !== 'string' || !findUser(state.me)) state.me = null;
+}
 
 function findUser(u){ return state.users.filter(function(x){return x.u.toLowerCase()===String(u||'').toLowerCase();})[0]; }
 function me(){ return findUser(state.me); }
+function api(action, extra){
+  var body = {action:action};
+  if(state.cred){ body.u = state.cred.u; body.p = state.cred.p; }
+  for(var k in (extra||{})) body[k] = extra[k];
+  return fetch(API_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body)})
+    .then(function(r){ return r.json(); })
+    .catch(function(){ return {ok:false, error:'network', msg:'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.'}; });
+}
+function safeRender(){
+  var a = document.activeElement;
+  if(a && (a.tagName==='INPUT' || a.tagName==='SELECT') && app.contains(a)) return;
+  render();
+}
+function refresh(){
+  if(!REMOTE || !state.cred) return Promise.resolve();
+  var u = me(), admin = u && u.role==='admin';
+  state.sync.busy = true;
+  var jobs = admin ? [api('logs',{who:'*'}), api('listUsers'), api('getToken')] : [api('logs')];
+  return Promise.all(jobs).then(function(rs){
+    state.sync.busy = false;
+    var bad = rs.filter(function(r){ return !r.ok; })[0];
+    if(bad){
+      if(bad.error==='auth'){ doLogout('Phiên đăng nhập không còn hợp lệ. Hãy đăng nhập lại.'); return; }
+      state.sync.err = bad.msg || 'Không đồng bộ được.'; safeRender(); return;
+    }
+    state.logs = rs[0].logs.map(function(x){ return {u:x[0], t:x[1]}; });
+    if(admin){
+      state.users = rs[1].users;
+      state.token = rs[2].token;
+    }
+    state.sync.err = ''; state.sync.at = Date.now(); safeRender();
+  });
+}
+function doLogout(msg){
+  state.me = null; state.cred = null; save(K.session, null); state.loginErr = msg || '';
+  if(REMOTE){ state.logs = []; state.users = []; state.token = null; state.sync = {busy:false, err:'', at:null}; }
+  render();
+}
 function employees(){ return state.users.filter(function(x){return x.role!=='admin';}); }
 
 /* ---------- Thời gian ---------- */
@@ -339,6 +395,24 @@ function bindLogin(){
   f.addEventListener('submit', function(e){
     e.preventDefault();
     var un = document.getElementById('lu').value.trim(), pw = document.getElementById('lp').value;
+    if(REMOTE){
+      var btn = f.querySelector('button[type="submit"]'), er = document.getElementById('lerr');
+      btn.disabled = true; er.textContent = 'Đang đăng nhập…';
+      state.cred = {u:un, p:pw};
+      api('login').then(function(r){
+        if(r.ok){
+          state.cred = {u:r.user.u, p:pw}; state.me = r.user.u; state.users = [r.user]; state.loginErr = '';
+          state.tab = (r.user.role==='admin') ? 'qr' : 'home'; state.mode = 'day'; state.anchor = new Date(); state.who = null;
+          state.sync = {busy:false, err:'', at:null};
+          save(K.session, {u:r.user.u, p:pw, name:r.user.name, role:r.user.role});
+          render(); refresh();
+        }else{
+          state.cred = null; btn.disabled = false; er.textContent = r.msg || 'Đăng nhập không được.';
+          document.getElementById('lp').value = ''; document.getElementById('lp').focus();
+        }
+      });
+      return;
+    }
     var u = findUser(un);
     if(u && u.p === pw){
       state.me = u.u; state.loginErr = ''; state.tab = (u.role==='admin') ? 'qr' : 'home';
@@ -353,7 +427,12 @@ function bindLogin(){
 
 function header(u){
   return '<div class="top"><div class="who"><span class="eyebrow">'+(u.role==='admin'?'Quản trị':'Nhân viên')+'</span><b>'+esc(u.name)+'</b></div>'+
-    '<button class="btn sm" data-act="logout" type="button">Đăng xuất</button></div>';
+    '<button class="btn sm" data-act="logout" type="button">Đăng xuất</button></div>'+syncLine();
+}
+function syncLine(){
+  if(!REMOTE) return '';
+  var t = state.sync.err ? esc(state.sync.err) : state.sync.busy ? 'Đang đồng bộ…' : state.sync.at ? 'Đã đồng bộ lúc '+hm(state.sync.at) : 'Chưa đồng bộ';
+  return '<div class="syncline small '+(state.sync.err?'bad':'muted')+'"><span>'+t+'</span><button class="btn sm" data-act="refresh" type="button">Làm mới</button></div>';
 }
 function tabBar(u){
   var items = u.role==='admin'
@@ -443,8 +522,8 @@ function adminBody(u){
   if(state.tab==='staff') return staffBody();
   return '<div class="card">'+
     '<div><h2>Mã QR chấm công</h2><div class="muted small">Hiển thị mã này tại nơi làm việc. Nhân viên quét bằng điện thoại để vào ca hoặc ra ca.</div></div>'+
-    '<div class="qrbox">'+qrSvg('CHAMCONG|'+state.token)+'</div>'+
-    '<div class="code">'+esc(state.token)+'</div>'+
+    '<div class="qrbox">'+(state.token ? qrSvg('CHAMCONG|'+state.token) : '')+'</div>'+
+    '<div class="code">'+esc(state.token || 'Đang tải…')+'</div>'+
     '<button class="btn primary" data-act="newtoken" type="button">Tạo mã mới</button>'+
     '<div class="muted small">Mã này không tự đổi. Chỉ khi bạn bấm “Tạo mã mới” thì mã mới được tạo và mã cũ không còn dùng được.</div>'+
   '</div>';
@@ -494,6 +573,28 @@ function handleScan(raw){
   var tot = sessionsOf(byDay(u.u)[dkeyD(new Date())]).total;
   return {ok:true, title:'Đã ghi giờ ra', msg:'Lúc '+hm(now)+'. Hôm nay bạn làm được '+dur(tot)+'.'};
 }
+function doScan(raw){
+  if(!REMOTE) return Promise.resolve(handleScan(raw));
+  var u = me();
+  if(!u || u.role==='admin') return Promise.resolve({ok:false, retry:false, title:'Không chấm công được', msg:'Chỉ tài khoản nhân viên mới chấm công được.'});
+  var t = String(raw||'').trim(), code;
+  if(t.indexOf('CHAMCONG|')===0) code = t.slice(9);
+  else if(/^[A-Za-z0-9]{6,12}$/.test(t)) code = t;
+  else return Promise.resolve({ok:false, title:'Không phải mã chấm công', msg:'Mã QR vừa quét không thuộc hệ thống chấm công. Hãy quét đúng mã QR do Admin cung cấp.'});
+  msgEl.textContent = 'Đang ghi nhận…';
+  return api('scan', {code:code}).then(function(r){
+    if(r.ok){
+      state.logs.push({u:u.u, t:r.t});
+      if(r.type==='in') return {ok:true, title:'Đã ghi giờ vào', msg:'Lúc '+hm(r.t)+'.'};
+      return {ok:true, title:'Đã ghi giờ ra', msg:'Lúc '+hm(r.t)+'. Hôm nay bạn làm được '+dur(r.totalToday)+'.'};
+    }
+    if(r.error==='bad_code') return {ok:false, title:'Sai mã QR', msg:'Mã này không đúng hoặc đã được Admin thay mới. Hãy quét mã QR đang dùng tại nơi làm việc.'};
+    if(r.error==='cooldown') return {ok:false, retry:false, title:'Bạn vừa quét xong', msg:'Chờ vài giây rồi quét lại nếu cần.'};
+    if(r.error==='auth') return {ok:false, retry:false, title:'Cần đăng nhập lại', msg:'Phiên đăng nhập không còn hợp lệ. Hãy đăng xuất rồi đăng nhập lại.'};
+    return {ok:false, title:'Chưa ghi được giờ', msg:r.msg || 'Có lỗi xảy ra. Hãy thử lại.'};
+  });
+}
+function scanThen(raw){ return doScan(raw).then(afterScan); }
 var toastTimer;
 function toast(msg, kind){
   var el = document.getElementById('toast'); el.textContent = msg; el.className = 'toast '+(kind||''); el.hidden = false;
@@ -563,10 +664,10 @@ function loop(){
     cv.width = w; cv.height = h; ctx.drawImage(video, 0, 0, w, h);
     var txt = null;
     try{ txt = decodeImageData(ctx.getImageData(0,0,w,h).data, w, h, false); }catch(e){}
-    if(txt){ scanning = false; afterScan(handleScan(txt)); return; }
+    if(txt){ scanning = false; scanThen(txt); return; }
     if(detector){
       detector.detect(video).then(function(r){
-        if(scanning && r && r[0] && r[0].rawValue){ scanning = false; afterScan(handleScan(r[0].rawValue)); }
+        if(scanning && r && r[0] && r[0].rawValue){ scanning = false; scanThen(r[0].rawValue); }
       }).catch(function(){});
     }
   }
@@ -587,10 +688,10 @@ function decodeFile(file){
       try{ txt = decodeImageData(ctx.getImageData(0,0,w,h).data, w, h, true); }catch(e){}
     }
     URL.revokeObjectURL(url);
-    if(txt){ afterScan(handleScan(txt)); return; }
+    if(txt){ scanThen(txt); return; }
     if(detector){
       detector.detect(cv).then(function(r){
-        if(r && r[0] && r[0].rawValue) afterScan(handleScan(r[0].rawValue));
+        if(r && r[0] && r[0].rawValue) scanThen(r[0].rawValue);
         else failPhoto();
       }).catch(failPhoto);
     }else failPhoto();
@@ -620,8 +721,9 @@ function shift(dir){
 app.addEventListener('click', function(e){
   var b = e.target.closest('[data-act]'); if(!b) return;
   var act = b.getAttribute('data-act'), v = b.getAttribute('data-v');
-  if(act==='logout'){ state.me = null; save(K.session, null); state.loginErr=''; render(); return; }
-  if(act==='tab'){ state.tab = v; state.confirmDel = null; state.formErr=''; render(); return; }
+  if(act==='logout'){ doLogout(''); return; }
+  if(act==='refresh'){ state.sync.busy = true; state.sync.err = ''; render(); refresh(); return; }
+  if(act==='tab'){ state.tab = v; state.confirmDel = null; state.formErr=''; render(); if(REMOTE) refresh(); return; }
   if(act==='scan'){ openScanner(); return; }
   if(act==='photo'){ document.getElementById('photo').click(); return; }
   if(act==='mode'){ state.mode = v; render(); return; }
@@ -629,8 +731,26 @@ app.addEventListener('click', function(e){
   if(act==='next'){ shift(1); render(); return; }
   if(act==='today'){ state.anchor = new Date(); render(); return; }
   if(act==='who'){ state.who = v; render(); return; }
-  if(act==='newtoken'){ state.token = randToken(); save(K.token, state.token); render(); toast('Đã tạo mã QR mới. Mã cũ không còn dùng được.', 'good'); return; }
+  if(act==='newtoken'){
+    if(REMOTE){
+      b.disabled = true;
+      api('newToken').then(function(r){
+        if(r.ok){ state.token = r.token; render(); toast('Đã tạo mã QR mới. Mã cũ không còn dùng được.', 'good'); }
+        else { render(); toast(r.msg || 'Chưa tạo được mã mới.', 'bad'); }
+      });
+      return;
+    }
+    state.token = randToken(); save(K.token, state.token); render(); toast('Đã tạo mã QR mới. Mã cũ không còn dùng được.', 'good'); return;
+  }
   if(act==='del'){
+    if(state.confirmDel===v && REMOTE){
+      api('delUser',{who:v}).then(function(r){
+        state.confirmDel = null; if(state.who===v) state.who = null;
+        if(r.ok){ state.users = state.users.filter(function(x){return x.u!==v;}); render(); toast('Đã xóa nhân viên '+v, 'good'); }
+        else { render(); toast(r.msg || 'Chưa xóa được.', 'bad'); }
+      });
+      return;
+    }
     if(state.confirmDel===v){
       state.users = state.users.filter(function(x){return x.u!==v;}); save(K.users, state.users);
       state.logs = state.logs.filter(function(l){return l.u!==v;}); save(K.logs, state.logs);
@@ -642,14 +762,21 @@ app.addEventListener('click', function(e){
 app.addEventListener('submit', function(e){
   if(e.target.id==='manual'){
     e.preventDefault();
-    var inp = document.getElementById('mcode'); var res = handleScan(inp.value);
-    showResult(res); if(res.ok) render(); else inp.select();
+    var inp = document.getElementById('mcode');
+    doScan(inp.value).then(function(res){ showResult(res); if(res.ok) render(); else if(document.body.contains(inp)) inp.select(); });
   }
   if(e.target.id==='addForm'){
     e.preventDefault();
     var un = document.getElementById('nu').value.trim(), pw = document.getElementById('np').value;
     if(findUser(un)){ state.formErr = 'Tên đăng nhập này đã tồn tại.'; render(); return; }
     if(!un || !pw){ state.formErr = 'Nhập đủ tên đăng nhập và mật khẩu.'; render(); return; }
+    if(REMOTE){
+      api('addUser',{newU:un, newP:pw}).then(function(r){
+        if(r.ok){ state.formErr = ''; state.users.push({u:un, name:un, role:'user'}); render(); toast('Đã thêm nhân viên '+un, 'good'); }
+        else { state.formErr = r.msg || 'Chưa thêm được.'; render(); }
+      });
+      return;
+    }
     state.users.push({u:un, name:un, p:pw, role:'user'}); save(K.users, state.users);
     state.formErr = ''; render(); toast('Đã thêm nhân viên '+un, 'good');
   }
@@ -811,6 +938,11 @@ var QR = (function(){
 })();
 
 render();
+if(REMOTE){
+  if(state.cred) refresh();
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden && state.cred) refresh(); });
+  setInterval(function(){ if(!document.hidden && state.cred) refresh(); }, 60000);
+}
 })();
 </script>
 </body>
