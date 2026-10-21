@@ -2,8 +2,16 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Chấm Công">
+<meta name="theme-color" content="#F1F5F3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0D1512" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAD9UlEQVR42u3dQZbTMBBF0W4dxrA/WAIshy2wQHbAgCmkncSx6lfdN+6BVHr+Jbsj+/3z969vwL9YSgBygBwgB8gBcoAcIAfIAXKAHAA5QA6QA+QAOUAOkAPkADlADoAcIAfIAXKAHCAHyAFygBwgB0AOkAP382nszH///HX8j7/8+DawRO9zXvt0lw1c6S/HiUIMFKWnHBc4McGSbnJs0aKrIk3k2O5ES0vi5SioRRtFFjOGj7BhcsQVPTFC8uS4/nHF2AckYXI8uU6nrE2FMZDjnFV56WIUHNI4OYqvQVdFAuS4t/Qbix401A5yJP7vtM3/e0vLcbzKBUscPfi/LGa8iOOjKvvMpmhyHKxXxLY/dy5LNYtESMH8WMzgR0ZbOVKd6P9zZk1wKVy1CKmTH6tZZc2ioRwfXi6dfn734VyKhMdiBj/qyjHQjBQ/5p54O7IGMw+6VUmOsbERER4runZuXtrKcfuymBPpt2e6MTxWTTNQoVYr8WLSXDrLoaFENBdv9kGOHJMfLVSb+wY5bEVT6rZcOipQRQ6xEVQ9G1IkyKGnVKvDpXLoKVk1XC4X4WHPAXIgUQ4bjrhKlkgOG46aNdFWQA6QA3ly2I0m1nN/ctiNlq2MtgJygBznNu/hW6XFDFtpcoAcIMfF3WdmcyHHmRsUcvTh3qdM0yJkenI88BRyjh/ayoN+TFCEHA/6MSFCLnq9deI7F7Z/02N70VblS3N7nJR9of019dRWzlmGlrsQcmRHCDlEyGA5Uqp5ZYTMevd5m58Dbo+QyyqprbwwQtKvB3LIwvJyhG7ibkTIM+pM/BjPnC+nvG6mV9Yw7AOADW5kgupgz3H+Zd0mINeW8tmlRlSvVnI4UluqAqvZtSWTOu85JodHtbnbkKKYHGW/alY2Nrb04pVYKQ2luRy2pfVrtcrOeU54lP319cqtmobSXI7i3+vebsbe5utWFoXlGBsexWPjLeXd5/38qG/GW9DHeDr5EWFG2J6jhx9Bswj7AGC6H0fGX+fx4EWn7E+/sOIesCbOK/Vb9lkREmp8xT1HMz9ys7BcW3lg7cu2mPQp1L1bOV6vmhHSQO66yfHAwhepcuKYI+V4IBg2ljtoqE3keLhxXFb64sNrLkfZNeiqRZ4cz+89T1mVCmMgx8vvTa5/oJL1YDdPjsq3r220yJYjSJHc39ln/0ywft2jT2BkJ0flCGlwMKeJHHUs6XRYq5scGxXpd4avpxxXWtL4XGdzOV4kypCDvoPkeMaVmce+58qBD3EcEuQAOUAOkAPkADlADpAD5AA5AHKAHCAHyAFygBwgB8gBcoAcADlADpAD5AA5QA6QA+QAOUAOgBz4P38AQzLaDOf1YBYAAAAASUVORK5CYII=">
+<link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAD9UlEQVR42u3dQZbTMBBF0W4dxrA/WAIshy2wQHbAgCmkncSx6lfdN+6BVHr+Jbsj+/3z969vwL9YSgBygBwgB8gBcoAcIAfIAXKAHAA5QA6QA+QAOUAOkAPkADlADoAcIAfIAXKAHCAHyAFygBwgB0AOkAP382nszH///HX8j7/8+DawRO9zXvt0lw1c6S/HiUIMFKWnHBc4McGSbnJs0aKrIk3k2O5ES0vi5SioRRtFFjOGj7BhcsQVPTFC8uS4/nHF2AckYXI8uU6nrE2FMZDjnFV56WIUHNI4OYqvQVdFAuS4t/Qbix401A5yJP7vtM3/e0vLcbzKBUscPfi/LGa8iOOjKvvMpmhyHKxXxLY/dy5LNYtESMH8WMzgR0ZbOVKd6P9zZk1wKVy1CKmTH6tZZc2ioRwfXi6dfn734VyKhMdiBj/qyjHQjBQ/5p54O7IGMw+6VUmOsbERER4runZuXtrKcfuymBPpt2e6MTxWTTNQoVYr8WLSXDrLoaFENBdv9kGOHJMfLVSb+wY5bEVT6rZcOipQRQ6xEVQ9G1IkyKGnVKvDpXLoKVk1XC4X4WHPAXIgUQ4bjrhKlkgOG46aNdFWQA6QA3ly2I0m1nN/ctiNlq2MtgJygBznNu/hW6XFDFtpcoAcIMfF3WdmcyHHmRsUcvTh3qdM0yJkenI88BRyjh/ayoN+TFCEHA/6MSFCLnq9deI7F7Z/02N70VblS3N7nJR9of019dRWzlmGlrsQcmRHCDlEyGA5Uqp5ZYTMevd5m58Dbo+QyyqprbwwQtKvB3LIwvJyhG7ibkTIM+pM/BjPnC+nvG6mV9Yw7AOADW5kgupgz3H+Zd0mINeW8tmlRlSvVnI4UluqAqvZtSWTOu85JodHtbnbkKKYHGW/alY2Nrb04pVYKQ2luRy2pfVrtcrOeU54lP319cqtmobSXI7i3+vebsbe5utWFoXlGBsexWPjLeXd5/38qG/GW9DHeDr5EWFG2J6jhx9Bswj7AGC6H0fGX+fx4EWn7E+/sOIesCbOK/Vb9lkREmp8xT1HMz9ys7BcW3lg7cu2mPQp1L1bOV6vmhHSQO66yfHAwhepcuKYI+V4IBg2ljtoqE3keLhxXFb64sNrLkfZNeiqRZ4cz+89T1mVCmMgx8vvTa5/oJL1YDdPjsq3r220yJYjSJHc39ln/0ywft2jT2BkJ0flCGlwMKeJHHUs6XRYq5scGxXpd4avpxxXWtL4XGdzOV4kypCDvoPkeMaVmce+58qBD3EcEuQAOUAOkAPkADlADpAD5AA5AHKAHCAHyAFygBwgB8gBcoAcADlADpAD5AA5QA6QA+QAOUAOgBz4P38AQzLaDOf1YBYAAAAASUVORK5CYII=">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{-webkit-text-size-adjust:100%}body{margin:0;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Chấm Công QR</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -60,11 +68,11 @@ h2{font-size:1.05rem;font-weight:600}
 .btn:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,.tab:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 
 label{display:flex;flex-direction:column;gap:6px;font-weight:500;font-size:.9rem}
-input,select{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-height:46px;width:100%}
+input,select{font-size:16px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-height:46px;width:100%}
 input::placeholder{color:var(--muted)}
 
 /* Đăng nhập */
-.login{min-height:100vh;display:flex;align-items:center}
+.login{min-height:100vh;min-height:100dvh;display:flex;align-items:center}
 .login .wrap{width:100%;padding-block:32px}
 .brandmark{display:flex;align-items:center;gap:12px}
 .mark{width:44px;height:44px;border-radius:12px;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;flex:none}
