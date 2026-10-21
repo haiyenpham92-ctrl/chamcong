@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';document.head.appendChild(s)"></script>
 <style>
 /* Layout: ứng dụng một cột kiểu điện thoại, thanh tab dưới đáy, thẻ số liệu ở đầu trang */
 :root{
@@ -137,6 +137,14 @@ input::placeholder{color:var(--muted)}
 .scan .btn{background:#fff;color:#111;border-color:#fff}
 .scan .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.5)}
 
+.result{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;
+  padding-top:max(16px,env(safe-area-inset-top,0px));padding-bottom:max(16px,env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.rcard{background:var(--surface);color:var(--fg);border-radius:20px;padding:24px 20px 20px;width:100%;max-width:380px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;border:1px solid var(--line)}
+.rcard h2{font-size:1.25rem}
+.rcard p{margin:0;color:var(--muted);overflow-wrap:anywhere}
+.ricon{width:68px;height:68px;border-radius:50%;display:grid;place-items:center;font-size:2.2rem;font-weight:700;color:#fff;background:var(--danger);line-height:1}
+.result.good .ricon{background:var(--accent);color:var(--accent-fg)}
+.rbtns{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:8px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:30;max-width:min(92vw,420px);
   padding:12px 16px;border-radius:14px;font-weight:600;background:var(--fg);color:var(--bg);box-shadow:0 6px 24px rgba(0,0,0,.25);text-align:center}
 .toast.bad{background:var(--danger);color:#fff}
@@ -161,6 +169,17 @@ details summary::-webkit-details-marker{display:none}
 <input type="file" id="photo" accept="image/*" capture="environment" hidden>
 <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
 <canvas id="cv" hidden></canvas>
+<div class="result bad" id="result" hidden role="alertdialog" aria-modal="true" aria-labelledby="rTitle">
+  <div class="rcard">
+    <div class="ricon" id="rIcon" aria-hidden="true">!</div>
+    <h2 id="rTitle"></h2>
+    <p id="rMsg"></p>
+    <div class="rbtns">
+      <button class="btn primary" id="rRetry" type="button">Quét lại</button>
+      <button class="btn" id="rClose" type="button">Đóng</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -176,7 +195,7 @@ function save(k, v){
   mem[k] = v;
   try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){}
 }
-var K = {users:'cc_users', logs:'cc_logs', token:'cc_token', session:'cc_session'};
+var K = {users:'cc_users', logs:'cc_logs', token:'cc_token2', session:'cc_session'};
 
 function randToken(){
   var a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s = '';
@@ -186,6 +205,7 @@ function randToken(){
   return s;
 }
 
+var DEFAULT_TOKEN = 'CONG2026';
 var state = {
   users: load(K.users, null) || [
     {u:'Admin', name:'Quản trị viên', p:'@bonamang', role:'admin'},
@@ -202,7 +222,7 @@ var state = {
   confirmDel: null,
   formErr: ''
 };
-if(!state.token){ state.token = randToken(); save(K.token, state.token); }
+if(!state.token){ state.token = DEFAULT_TOKEN; save(K.token, state.token); }
 save(K.users, state.users);
 // Đảm bảo hai tài khoản gốc luôn tồn tại
 (function(){
@@ -358,6 +378,7 @@ function userBody(u){
   return '<div class="card">'+
       '<div class="clock"><span class="eyebrow">'+DOW[now.getDay()]+', '+dm(now)+'/'+now.getFullYear()+'</span><span class="t num" id="clk">--:--:--</span>'+chip+'</div>'+
       '<button class="btn primary big" data-act="scan" type="button">'+IC.scan.replace('<svg','<svg width="26" height="26"')+'Quét mã QR chấm công</button>'+
+      '<button class="btn" data-act="photo" type="button">Chụp ảnh mã QR</button>'+
       '<div class="muted small">Lần quét đầu tiên là giờ vào, lần thứ hai là giờ ra. Chỉ có giờ vào mà chưa có giờ ra thì chưa được tính.</div>'+
       '<details><summary><span class="small muted">Nhập mã bằng tay</span><span class="muted">▾</span></summary>'+
         '<form id="manual" style="display:flex;gap:8px;margin-top:10px"><input id="mcode" aria-label="Mã chấm công" placeholder="Ví dụ: K7M2Q9XA" autocapitalize="characters" spellcheck="false"><button class="btn" type="submit">Gửi</button></form>'+
@@ -425,7 +446,7 @@ function adminBody(u){
     '<div class="qrbox">'+qrSvg('CHAMCONG|'+state.token)+'</div>'+
     '<div class="code">'+esc(state.token)+'</div>'+
     '<button class="btn primary" data-act="newtoken" type="button">Tạo mã mới</button>'+
-    '<div class="muted small">Sau khi tạo mã mới, mã cũ không còn dùng được. Hãy thay mã QR đang dán tại nơi làm việc.</div>'+
+    '<div class="muted small">Mã này không tự đổi. Chỉ khi bạn bấm “Tạo mã mới” thì mã mới được tạo và mã cũ không còn dùng được.</div>'+
   '</div>';
 }
 function trackBody(){
@@ -457,28 +478,51 @@ function staffBody(){
 
 /* ---------- Chấm công ---------- */
 function handleScan(raw){
-  var u = me(); if(!u || u.role==='admin') return {ok:false, msg:'Chỉ tài khoản nhân viên mới chấm công được.'};
-  var t = String(raw||'').trim(), code = t.indexOf('CHAMCONG|')===0 ? t.slice(9) : t;
-  if(code.toUpperCase() !== state.token) return {ok:false, msg:'Mã QR không đúng hoặc đã được thay mới.'};
+  var u = me();
+  if(!u || u.role==='admin') return {ok:false, retry:false, title:'Không chấm công được', msg:'Chỉ tài khoản nhân viên mới chấm công được.'};
+  var t = String(raw||'').trim(), code;
+  if(t.indexOf('CHAMCONG|')===0) code = t.slice(9);
+  else if(/^[A-Za-z0-9]{6,12}$/.test(t)) code = t;
+  else return {ok:false, title:'Không phải mã chấm công', msg:'Mã QR vừa quét không thuộc hệ thống chấm công. Hãy quét đúng mã QR do Admin cung cấp.'};
+  if(code.toUpperCase() !== state.token) return {ok:false, title:'Sai mã QR', msg:'Mã này không đúng hoặc đã được Admin thay mới. Hãy quét mã QR đang dùng tại nơi làm việc.'};
   var evs = eventsOf(u.u), last = evs[evs.length-1], now = Date.now();
-  if(last && now-last < 15000) return {ok:false, msg:'Bạn vừa quét xong. Chờ vài giây rồi thử lại.'};
+  if(last && now-last < 15000) return {ok:false, retry:false, title:'Bạn vừa quét xong', msg:'Chờ vài giây rồi quét lại nếu cần.'};
   var today = byDay(u.u)[dkeyD(new Date())] || [];
   var isIn = today.length%2===0;
   state.logs.push({u:u.u, t:now}); save(K.logs, state.logs);
-  if(isIn) return {ok:true, msg:'Đã ghi giờ vào lúc '+hm(now)};
+  if(isIn) return {ok:true, title:'Đã ghi giờ vào', msg:'Lúc '+hm(now)+'.'};
   var tot = sessionsOf(byDay(u.u)[dkeyD(new Date())]).total;
-  return {ok:true, msg:'Đã ghi giờ ra lúc '+hm(now)+'. Hôm nay: '+dur(tot)};
+  return {ok:true, title:'Đã ghi giờ ra', msg:'Lúc '+hm(now)+'. Hôm nay bạn làm được '+dur(tot)+'.'};
 }
 var toastTimer;
 function toast(msg, kind){
   var el = document.getElementById('toast'); el.textContent = msg; el.className = 'toast '+(kind||''); el.hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(function(){ el.hidden = true; }, 4200);
 }
+function showResult(res){
+  var el = document.getElementById('result');
+  el.className = 'result '+(res.ok?'good':'bad');
+  document.getElementById('rIcon').textContent = res.ok ? '✓' : '!';
+  document.getElementById('rTitle').textContent = res.title || (res.ok?'Thành công':'Có lỗi');
+  document.getElementById('rMsg').textContent = res.msg || '';
+  var rt = document.getElementById('rRetry'), cl = document.getElementById('rClose');
+  rt.hidden = !!res.ok || res.retry===false;
+  cl.textContent = res.ok ? 'Xong' : 'Đóng';
+  cl.className = 'btn' + (rt.hidden ? ' primary' : '');
+  el.hidden = false;
+  try{ if(navigator.vibrate) navigator.vibrate(res.ok ? 60 : [80,60,80]); }catch(e){}
+  (rt.hidden ? cl : rt).focus();
+}
 function afterScan(res){
   closeScanner();
-  toast(res.msg, res.ok?'good':'bad');
-  state.tab = 'home'; render();
+  showResult(res);
+  if(res.ok){ state.tab = 'home'; render(); }
 }
+document.getElementById('rClose').addEventListener('click', function(){ document.getElementById('result').hidden = true; });
+document.getElementById('rRetry').addEventListener('click', function(){
+  document.getElementById('result').hidden = true;
+  if(scanEl.hidden) openScanner();
+});
 
 /* ---------- Máy quét ---------- */
 var scanEl = document.getElementById('scanner'), video = document.getElementById('video'), msgEl = document.getElementById('scanMsg');
@@ -529,13 +573,20 @@ function loop(){
   setTimeout(function(){ requestAnimationFrame(loop); }, 120);
 }
 function decodeFile(file){
+  if(typeof jsQR !== 'function' && !detector){
+    showResult({ok:false, retry:false, title:'Chưa đọc được mã QR', msg:'Thư viện đọc mã QR chưa tải được. Kiểm tra kết nối mạng rồi đóng và mở lại app.'});
+    return;
+  }
+  msgEl.textContent = 'Đang đọc ảnh…';
   var url = URL.createObjectURL(file), img = new Image();
   img.onload = function(){
-    var sc = Math.min(1, 1200/Math.max(img.width, img.height)), w = Math.round(img.width*sc), h = Math.round(img.height*sc);
-    cv.width = w; cv.height = h; ctx.drawImage(img, 0, 0, w, h);
+    var sizes = [1200, 800, 500], txt = null;
+    for(var i=0;i<sizes.length && !txt;i++){
+      var sc = Math.min(1, sizes[i]/Math.max(img.width, img.height)), w = Math.max(1,Math.round(img.width*sc)), h = Math.max(1,Math.round(img.height*sc));
+      cv.width = w; cv.height = h; ctx.drawImage(img, 0, 0, w, h);
+      try{ txt = decodeImageData(ctx.getImageData(0,0,w,h).data, w, h, true); }catch(e){}
+    }
     URL.revokeObjectURL(url);
-    var txt = null;
-    try{ txt = decodeImageData(ctx.getImageData(0,0,w,h).data, w, h, true); }catch(e){}
     if(txt){ afterScan(handleScan(txt)); return; }
     if(detector){
       detector.detect(cv).then(function(r){
@@ -548,8 +599,8 @@ function decodeFile(file){
   img.src = url;
 }
 function failPhoto(){
-  if(scanEl.hidden){ toast('Không đọc được mã QR trong ảnh. Chụp gần và rõ hơn.', 'bad'); }
-  else msgEl.textContent = 'Không đọc được mã QR trong ảnh. Chụp gần và rõ hơn rồi thử lại.';
+  msgEl.textContent = 'Đưa mã QR vào giữa khung';
+  showResult({ok:false, title:'Không đọc được mã QR', msg:'Chụp gần hơn, đủ sáng và để mã QR nằm trọn trong ảnh, rồi thử lại.'});
 }
 
 document.getElementById('photoBtn').addEventListener('click', function(){ document.getElementById('photo').click(); });
@@ -572,6 +623,7 @@ app.addEventListener('click', function(e){
   if(act==='logout'){ state.me = null; save(K.session, null); state.loginErr=''; render(); return; }
   if(act==='tab'){ state.tab = v; state.confirmDel = null; state.formErr=''; render(); return; }
   if(act==='scan'){ openScanner(); return; }
+  if(act==='photo'){ document.getElementById('photo').click(); return; }
   if(act==='mode'){ state.mode = v; render(); return; }
   if(act==='prev'){ shift(-1); render(); return; }
   if(act==='next'){ shift(1); render(); return; }
@@ -591,7 +643,7 @@ app.addEventListener('submit', function(e){
   if(e.target.id==='manual'){
     e.preventDefault();
     var inp = document.getElementById('mcode'); var res = handleScan(inp.value);
-    toast(res.msg, res.ok?'good':'bad'); if(res.ok) render(); else inp.select();
+    showResult(res); if(res.ok) render(); else inp.select();
   }
   if(e.target.id==='addForm'){
     e.preventDefault();
