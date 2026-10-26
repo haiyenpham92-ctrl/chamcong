@@ -208,7 +208,7 @@ function randToken(){
 
 /* Dán địa chỉ Web app của Google Apps Script (kết thúc bằng /exec) vào giữa hai dấu nháy.
    Để trống thì app chạy chế độ thử, dữ liệu chỉ lưu trên từng điện thoại. */
-var API_URL = '';
+var API_URL = 'https://script.google.com/macros/s/AKfycbzU4EX4rZ6qNosQgeFFYuYwa-vcO02f03PfG8XtZxes67YvdgGDLKywsU6TkPyssRtEUA/exec';
 var REMOTE = !!API_URL;
 var DEFAULT_TOKEN = 'CONG2026';
 var state = {
@@ -512,6 +512,41 @@ function historyCard(user){
 }
 
 /* --- Quản trị --- */
+function downloadQR(){
+  if(!state.token){ toast('Mã QR chưa tải xong, thử lại sau vài giây.', 'bad'); return; }
+  var m = QR.make('CHAMCONG|'+state.token), n = m.length, q = 4, cell = Math.max(8, Math.floor(880/(n+q*2)));
+  var side = (n+q*2)*cell, pad = 60, head = 110, foot = 90, W = side+pad*2, H = side+head+foot+pad;
+  var c = document.createElement('canvas'); c.width = W; c.height = H;
+  var g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0,0,W,H);
+  g.fillStyle = '#000';
+  for(var r=0;r<n;r++) for(var k=0;k<n;k++) if(m[r][k]) g.fillRect(pad+(k+q)*cell, head+(r+q)*cell, cell, cell);
+  g.textAlign = 'center'; g.fillStyle = '#13201B';
+  g.font = '700 54px system-ui, -apple-system, "Segoe UI", sans-serif';
+  g.fillText('QUÉT MÃ ĐỂ CHẤM CÔNG', W/2, 78);
+  g.font = '600 44px ui-monospace, Menlo, Consolas, monospace';
+  g.fillText(state.token, W/2, head+side+62);
+  c.toBlob(function(blob){
+    if(!blob){ toast('Chưa tạo được ảnh mã QR.', 'bad'); return; }
+    var name = 'ma-qr-cham-cong.png';
+    var ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+    try{
+      var file = new File([blob], name, {type:'image/png'});
+      if(ios && navigator.canShare && navigator.canShare({files:[file]})){
+        navigator.share({files:[file]}).catch(function(e){ if(e && e.name!=='AbortError') saveBlob(blob, name); });
+        return;
+      }
+    }catch(e){}
+    saveBlob(blob, name);
+  }, 'image/png');
+}
+function saveBlob(blob, name){
+  var url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; a.style.display = 'none';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
+  toast('Đã tải ảnh mã QR về máy.', 'good');
+}
 function adminBody(u){
   if(state.tab==='track') return trackBody();
   if(state.tab==='staff') return staffBody();
@@ -519,7 +554,8 @@ function adminBody(u){
     '<div><h2>Mã QR chấm công</h2><div class="muted small">Hiển thị mã này tại nơi làm việc. Nhân viên quét bằng điện thoại để vào ca hoặc ra ca.</div></div>'+
     '<div class="qrbox">'+(state.token ? qrSvg('CHAMCONG|'+state.token) : '')+'</div>'+
     '<div class="code">'+esc(state.token || 'Đang tải…')+'</div>'+
-    '<button class="btn primary" data-act="newtoken" type="button">Tạo mã mới</button>'+
+    '<button class="btn primary" data-act="dlqr" type="button"'+(state.token?'':' disabled')+'>Tải mã QR về máy</button>'+
+    '<button class="btn" data-act="newtoken" type="button">Tạo mã mới</button>'+
     '<div class="muted small">Mã này không tự đổi. Chỉ khi bạn bấm “Tạo mã mới” thì mã mới được tạo và mã cũ không còn dùng được.</div>'+
   '</div>';
 }
@@ -698,6 +734,7 @@ app.addEventListener('click', function(e){
   if(act==='next'){ shift(1); render(); return; }
   if(act==='today'){ state.anchor = new Date(); render(); return; }
   if(act==='who'){ state.who = v; render(); return; }
+  if(act==='dlqr'){ downloadQR(); return; }
   if(act==='newtoken'){
     if(REMOTE){
       b.disabled = true;
