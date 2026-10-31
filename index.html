@@ -147,6 +147,8 @@ input::placeholder{color:var(--muted)}
 .rbtns{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:8px}
 .syncline{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:-8px}
 .syncline.bad{color:var(--danger)}
+.shiprow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.shipnote{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .paygrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .paygrid .full{grid-column:1/-1}
 .paygrid input{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -240,7 +242,7 @@ var state = {
   cred: null,
   sync: {busy:false, err:'', at:null},
   ship: {busy:false, done:false, err:'', at:null, count:0},
-  pay: {month:null, rows:[], drafts:{}, dirty:{}, loaded:false, saving:false}
+  pay: {month:null, rows:[], drafts:{}, dirty:{}, loaded:false, saving:false, auto:{}}
 };
 state.pay.month = (function(){ var d = new Date(); return d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1); })();
 if(REMOTE){
@@ -304,7 +306,7 @@ function refresh(){
 function syncShippers(manual){
   state.ship.busy = true; state.ship.err = '';
   if(manual) safeRender();
-  return api('syncShippers').then(function(r){
+  return api('syncShippers', {force: !!manual}).then(function(r){
     state.ship.busy = false; state.ship.done = true;
     if(r.ok){
       state.ship.count = r.total; state.ship.at = Date.now();
@@ -322,7 +324,7 @@ function syncShippers(manual){
 function doLogout(msg){
   state.me = null; state.cred = null; save(K.session, null); state.loginErr = msg || '';
   if(REMOTE){ state.logs = []; state.users = []; state.token = null; state.sync = {busy:false, err:'', at:null};
-    state.ship = {busy:false, done:false, err:'', at:null, count:0}; state.pay.rows = []; state.pay.drafts = {}; state.pay.dirty = {}; state.pay.loaded = false; }
+    state.ship = {busy:false, done:false, err:'', at:null, count:0}; state.pay.rows = []; state.pay.drafts = {}; state.pay.dirty = {}; state.pay.loaded = false; state.pay.auto = {}; }
   render();
 }
 function employees(){ return state.users.filter(function(x){return x.role!=='admin';}); }
@@ -612,17 +614,46 @@ function numStr(n){ return (n===0||n===undefined||n===null) ? '' : String(n); }
 function ensureDraft(m){
   var P = state.pay;
   if(P.drafts[m]) return P.drafts[m];
-  var dr = {}, sugg = false;
+  var dr = {}, sugg = false, autoUsed = false;
+  var A = (P.auto[m] && P.auto[m].ok) ? P.auto[m].by : null;
   employees().forEach(function(e){
     var row = P.rows.filter(function(r){ return r.m===m && r.u===e.u; })[0];
     if(row){ dr[e.u] = {base:numStr(row.base), coef:String(row.coef), sales:numStr(row.sales), ship:numStr(row.ship), bonus:numStr(row.bonus)}; return; }
     var prev = P.rows.filter(function(r){ return r.u===e.u && r.m<m; }).sort(function(a,b){ return a.m<b.m?1:-1; })[0];
-    dr[e.u] = {base:prev?numStr(prev.base):'', coef:prev?String(prev.coef):'', sales:'', ship:'', bonus:''};
+    var av = (A && A[e.u]) ? A[e.u].total : 0;
+    dr[e.u] = {base:prev?numStr(prev.base):'', coef:prev?String(prev.coef):'', sales:'', ship:av?String(av):'', bonus:''};
     if(prev) sugg = true;
+    if(av) autoUsed = true;
   });
-  dr._sugg = sugg;
+  dr._sugg = sugg; dr._auto = autoUsed;
   P.drafts[m] = dr;
   return dr;
+}
+function hasPayRow(m, u){ return state.pay.rows.some(function(r){ return r.m===m && r.u===u; }); }
+function maybeShipAuto(){ var m = state.pay.month; if(REMOTE && !state.pay.auto[m]) loadShipAuto(m, false); }
+function loadShipAuto(m, force){
+  var P = state.pay, old = P.auto[m];
+  if(old && old.busy) return Promise.resolve();
+  P.auto[m] = {busy:true, ok:!!(old&&old.ok), err:'', by:(old&&old.by)||{}, unmatched:(old&&old.unmatched)||[], at:(old&&old.at)||null};
+  safeRender();
+  return api('getShipPay', {month:m, force:!!force}).then(function(r){
+    if(r.error==='auth'){ doLogout('Phiên đăng nhập không còn hợp lệ. Hãy đăng nhập lại.'); return; }
+    var a = {busy:false, ok:!!r.ok, err:r.ok?'':(r.msg||'Không đọc được đơn hàng.'), by:{}, unmatched:[], at:Date.now()};
+    if(r.ok){ (r.rows||[]).forEach(function(x){ a.by[x.u] = {total:x.total, count:x.count}; }); a.unmatched = r.unmatched||[]; }
+    P.auto[m] = a;
+    if(r.ok){
+      if(force){
+        var dr = ensureDraft(m);
+        employees().forEach(function(e){ var d = dr[e.u]; if(!d) return; var v = a.by[e.u] ? a.by[e.u].total : 0; d.ship = v ? String(v) : ''; });
+        P.dirty[m] = true;
+      }else if(!P.dirty[m]){
+        delete P.drafts[m];
+      }else if(P.drafts[m]){
+        employees().forEach(function(e){ var d = P.drafts[m][e.u]; if(d && !d.ship && !hasPayRow(m, e.u) && a.by[e.u]) d.ship = String(a.by[e.u].total); });
+      }
+    }
+    safeRender();
+  });
 }
 function shipCard(){
   var S = state.ship, line;
@@ -636,7 +667,7 @@ function shipCard(){
 function payBody(){
   var P = state.pay, m = P.month, emps = employees();
   var parts = m.split('-'), from = new Date(Number(parts[0]), Number(parts[1])-1, 1), to = new Date(Number(parts[0]), Number(parts[1]), 0);
-  var dr = ensureDraft(m), sum = 0;
+  var dr = ensureDraft(m), sum = 0, A = P.auto[m];
   var cards = emps.map(function(e, i){
     var d = dr[e.u] || (dr[e.u] = {base:'', coef:'', sales:'', ship:'', bonus:''});
     var t = totalsFor(e.u, from, to), tot = payTotal(d); sum += tot;
@@ -645,16 +676,27 @@ function payBody(){
       return '<label for="pf'+i+f[0]+'"'+(f[0]==='bonus'?' class="full"':'')+'>'+f[1]+
         '<input id="pf'+i+f[0]+'" data-u="'+esc(e.u)+'" data-f="'+f[0]+'" data-k="'+f[2]+'" inputmode="'+(f[2]==='money'?'numeric':'decimal')+'" autocomplete="off" placeholder="'+(f[0]==='coef'?'1':'0')+'" value="'+esc(shown)+'"></label>';
     }).join('');
+    var an = (A && A.ok) ? A.by[e.u] : null, note = '';
+    if(A && A.ok){
+      if(an && an.total>0){
+        note = 'Đơn hàng tháng này: <b class="num">'+fmtMoney(an.total)+' đ</b> · '+an.count+' đơn ship';
+        note += (moneyVal(d.ship)!==an.total) ? ' <button class="btn sm" data-act="useship" data-v="'+esc(e.u)+'" type="button">Dùng số này</button>' : ' · đã khớp';
+      }else note = 'Không có đơn ship nào trong tháng này.';
+    }
     return '<div class="card paycard"><div class="payhead"><h3>'+esc(e.name)+'</h3><span class="muted small num">Giờ công: '+dur(t.total)+' · '+t.days+' ngày</span></div>'+
       '<div class="paygrid">'+fields+'</div>'+
+      (note ? '<div class="shipnote small muted">'+note+'</div>' : '')+
       '<div class="totalrow"><span class="small muted">Tổng lương</span><span class="paytotal">'+fmtMoney(tot)+' đ</span></div></div>';
   }).join('') || '<div class="card"><div class="muted small">Chưa có nhân viên. Bấm “Cập nhật” ở tab Nhân viên để lấy từ tab Shippers.</div></div>';
   return '<div class="card">'+
     '<div class="nav"><button class="btn sm" data-act="paymonth" data-v="-1" type="button" aria-label="Tháng trước">‹</button><div class="lbl">'+monthLabel(m)+'</div><button class="btn sm" data-act="paymonth" data-v="1" type="button" aria-label="Tháng sau">›</button></div>'+
     '<div class="sumline"><span class="muted small">Tổng quỹ lương</span><span class="paytotal" id="paySum">'+fmtMoney(sum)+' đ</span></div>'+
     '<div class="formula">Tổng lương = Lương cơ bản × Hệ số + Lương bán hàng + Lương ship + Thưởng thêm</div>'+
+    '<div class="shiprow"><button class="btn sm" data-act="shipauto" type="button"'+(A&&A.busy?' disabled':'')+'>Lấy lương ship từ đơn hàng</button><span class="small '+(A&&A.err?'':'muted')+'"'+(A&&A.err?' style="color:var(--danger)"':'')+'>'+(A&&A.busy?'Đang đọc đơn hàng…':(A&&A.err?esc(A.err):(A&&A.ok?'Đã đọc lúc '+hm(A.at):'')))+'</span></div>'+
+    ((A && A.ok && A.unmatched.length) ? '<div class="muted small">Đơn của shipper chưa có tài khoản nhân viên: '+A.unmatched.map(function(x){ return esc(x.name)+' ('+fmtMoney(x.total)+' đ)'; }).join(', ')+'. Nếu shipper này có trong tab Shippers, bấm “Cập nhật” ở tab Nhân viên để tạo tài khoản.</div>' : '')+
+    (dr._auto ? '<div class="muted small">Lương ship đang tự điền từ đơn hàng. Bấm Lưu để chốt cho '+monthLabel(m).toLowerCase()+'.</div>' : '')+
     (dr._sugg ? '<div class="muted small">Lương cơ bản và hệ số đang lấy theo tháng gần nhất. Bấm Lưu để chốt cho '+monthLabel(m).toLowerCase()+'.</div>' : '')+
-    '<div class="small" id="payState">'+(P.dirty[m]?'<span class="unsaved">Có thay đổi chưa lưu</span>':'<span class="muted">Đã lưu</span>')+'</div>'+
+    '<div class="small" id="payState">'+((P.dirty[m]||dr._sugg||dr._auto)?'<span class="unsaved">Có thay đổi chưa lưu</span>':'<span class="muted">Đã lưu</span>')+'</div>'+
     '<button class="btn primary" data-act="paysave" type="button"'+(P.saving||!emps.length?' disabled':'')+'>'+(P.saving?'Đang lưu…':'Lưu bảng lương')+'</button>'+
     '</div>'+cards+
     (emps.length>2 ? '<button class="btn primary" data-act="paysave" type="button"'+(P.saving?' disabled':'')+'>Lưu bảng lương</button>' : '');
@@ -827,7 +869,7 @@ app.addEventListener('click', function(e){
   var act = b.getAttribute('data-act'), v = b.getAttribute('data-v');
   if(act==='logout'){ doLogout(''); return; }
   if(act==='refresh'){ state.sync.busy = true; state.sync.err = ''; render(); refresh(); return; }
-  if(act==='tab'){ state.tab = v; state.confirmDel = null; state.formErr=''; render(); if(REMOTE) refresh(); return; }
+  if(act==='tab'){ state.tab = v; state.confirmDel = null; state.formErr=''; render(); if(REMOTE) refresh(); if(v==='pay') maybeShipAuto(); return; }
   if(act==='scan'){ openScanner(); return; }
   if(act==='mode'){ state.mode = v; render(); return; }
   if(act==='prev'){ shift(-1); render(); return; }
@@ -835,7 +877,13 @@ app.addEventListener('click', function(e){
   if(act==='today'){ state.anchor = new Date(); render(); return; }
   if(act==='who'){ state.who = v; render(); return; }
   if(act==='shipsync'){ syncShippers(true); return; }
-  if(act==='paymonth'){ state.pay.month = shiftMonth(state.pay.month, Number(v)); render(); return; }
+  if(act==='paymonth'){ state.pay.month = shiftMonth(state.pay.month, Number(v)); render(); maybeShipAuto(); return; }
+  if(act==='shipauto'){ loadShipAuto(state.pay.month, true); return; }
+  if(act==='useship'){
+    var m0 = state.pay.month, an0 = state.pay.auto[m0] && state.pay.auto[m0].by[v], dr1 = ensureDraft(m0);
+    if(an0 && dr1[v]){ dr1[v].ship = String(an0.total); state.pay.dirty[m0] = true; render(); }
+    return;
+  }
   if(act==='paysave'){ paySave(); return; }
   if(act==='dlqr'){ downloadQR(); return; }
   if(act==='newtoken'){
@@ -895,7 +943,7 @@ app.addEventListener('input', function(e){
   var k = el.getAttribute('data-k'), v;
   if(k==='money'){ v = el.value.replace(/\D/g,''); if(el.value !== v) el.value = v; }
   else { v = el.value.replace(/[^0-9.,]/g,''); if(el.value !== v) el.value = v; }
-  d[f] = v; P.dirty[P.month] = true; delete dr0._sugg;
+  d[f] = v; P.dirty[P.month] = true; delete dr0._sugg; delete dr0._auto;
   var card = el.closest('.paycard'); if(card){ var t = card.querySelector('.paytotal'); if(t) t.textContent = fmtMoney(payTotal(d))+' đ'; }
   var sum = 0; employees().forEach(function(x){ if(dr0[x.u]) sum += payTotal(dr0[x.u]); });
   var se = document.getElementById('paySum'); if(se) se.textContent = fmtMoney(sum)+' đ';
