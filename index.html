@@ -147,6 +147,17 @@ input::placeholder{color:var(--muted)}
 .rbtns{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:8px}
 .syncline{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:-8px}
 .syncline.bad{color:var(--danger)}
+.paygrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.paygrid .full{grid-column:1/-1}
+.paygrid input{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.paycard h3{font-size:1.02rem;font-weight:600;overflow-wrap:anywhere}
+.payhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.totalrow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding-top:10px}
+.paytotal{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:700;font-size:1.3rem}
+.sumline{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.sumline .paytotal{font-size:1.5rem;color:var(--accent)}
+.formula{background:var(--surface2);border-radius:10px;padding:8px 12px;font-size:.82rem;color:var(--muted)}
+.unsaved{color:var(--out);font-weight:600}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:30;max-width:min(92vw,420px);
   padding:12px 16px;border-radius:14px;font-weight:600;background:var(--fg);color:var(--bg);box-shadow:0 6px 24px rgba(0,0,0,.25);text-align:center}
 .toast.bad{background:var(--danger);color:#fff}
@@ -227,8 +238,11 @@ var state = {
   confirmDel: null,
   formErr: '',
   cred: null,
-  sync: {busy:false, err:'', at:null}
+  sync: {busy:false, err:'', at:null},
+  ship: {busy:false, done:false, err:'', at:null, count:0},
+  pay: {month:null, rows:[], drafts:{}, dirty:{}, loaded:false, saving:false}
 };
+state.pay.month = (function(){ var d = new Date(); return d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1); })();
 if(REMOTE){
   // Chế độ máy chủ: dữ liệu nằm trong Google Sheet, trên máy chỉ nhớ phiên đăng nhập
   var sess = load(K.session, null);
@@ -268,7 +282,7 @@ function refresh(){
   if(!REMOTE || !state.cred) return Promise.resolve();
   var u = me(), admin = u && u.role==='admin';
   state.sync.busy = true;
-  var jobs = admin ? [api('logs',{who:'*'}), api('listUsers'), api('getToken')] : [api('logs')];
+  var jobs = admin ? [api('logs',{who:'*'}), api('listUsers'), api('getToken'), api('getPayroll')] : [api('logs')];
   return Promise.all(jobs).then(function(rs){
     state.sync.busy = false;
     var bad = rs.filter(function(r){ return !r.ok; })[0];
@@ -280,13 +294,35 @@ function refresh(){
     if(admin){
       state.users = rs[1].users;
       state.token = rs[2].token;
+      state.pay.rows = rs[3].rows || []; state.pay.loaded = true;
+      Object.keys(state.pay.drafts).forEach(function(m){ if(!state.pay.dirty[m]) delete state.pay.drafts[m]; });
     }
     state.sync.err = ''; state.sync.at = Date.now(); safeRender();
+    if(admin && !state.ship.done && !state.ship.busy) syncShippers(false);
+  });
+}
+function syncShippers(manual){
+  state.ship.busy = true; state.ship.err = '';
+  if(manual) safeRender();
+  return api('syncShippers').then(function(r){
+    state.ship.busy = false; state.ship.done = true;
+    if(r.ok){
+      state.ship.count = r.total; state.ship.at = Date.now();
+      var n = (r.created||[]).length;
+      if(n) toast('Đã tạo '+n+' tài khoản mới từ tab Shippers.', 'good');
+      else if(manual) toast('Danh sách nhân viên đã khớp với tab Shippers.', 'good');
+      return refresh();
+    }
+    if(r.error==='auth'){ doLogout('Phiên đăng nhập không còn hợp lệ. Hãy đăng nhập lại.'); return; }
+    state.ship.err = r.msg || 'Không đọc được tab Shippers.';
+    if(manual) toast(state.ship.err, 'bad');
+    safeRender();
   });
 }
 function doLogout(msg){
   state.me = null; state.cred = null; save(K.session, null); state.loginErr = msg || '';
-  if(REMOTE){ state.logs = []; state.users = []; state.token = null; state.sync = {busy:false, err:'', at:null}; }
+  if(REMOTE){ state.logs = []; state.users = []; state.token = null; state.sync = {busy:false, err:'', at:null};
+    state.ship = {busy:false, done:false, err:'', at:null, count:0}; state.pay.rows = []; state.pay.drafts = {}; state.pay.dirty = {}; state.pay.loaded = false; }
   render();
 }
 function employees(){ return state.users.filter(function(x){return x.role!=='admin';}); }
@@ -349,6 +385,7 @@ var IC = {
   list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 11h16"/></svg>',
   qr:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2M14 20h2M20 14v2"/></svg>',
   users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c1.8.7 3 2.3 3.5 5.2"/></svg>',
+  money:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6.5 9.5v.01M17.5 14.5v.01"/></svg>',
   clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
 };
 
@@ -435,7 +472,7 @@ function syncLine(){
 }
 function tabBar(u){
   var items = u.role==='admin'
-    ? [['qr','Mã QR',IC.qr],['track','Theo dõi',IC.list],['staff','Nhân viên',IC.users]]
+    ? [['qr','Mã QR',IC.qr],['track','Theo dõi',IC.list],['staff','Nhân viên',IC.users]].concat(REMOTE ? [['pay','Lương',IC.money]] : [])
     : [['home','Chấm công',IC.scan],['hist','Lịch sử',IC.list]];
   return '<nav class="tabs" aria-label="Điều hướng"><div class="in">'+items.map(function(i){
     return '<button class="tab" type="button" data-act="tab" data-v="'+i[0]+'"'+(state.tab===i[0]?' aria-current="page"':'')+'>'+i[2]+'<span>'+i[1]+'</span></button>';
@@ -550,6 +587,7 @@ function saveBlob(blob, name){
 function adminBody(u){
   if(state.tab==='track') return trackBody();
   if(state.tab==='staff') return staffBody();
+  if(state.tab==='pay' && REMOTE) return payBody();
   return '<div class="card">'+
     '<div><h2>Mã QR chấm công</h2><div class="muted small">Hiển thị mã này tại nơi làm việc. Nhân viên quét bằng điện thoại để vào ca hoặc ra ca.</div></div>'+
     '<div class="qrbox">'+(state.token ? qrSvg('CHAMCONG|'+state.token) : '')+'</div>'+
@@ -558,6 +596,68 @@ function adminBody(u){
     '<button class="btn" data-act="newtoken" type="button">Tạo mã mới</button>'+
     '<div class="muted small">Mã này không tự đổi. Chỉ khi bạn bấm “Tạo mã mới” thì mã mới được tạo và mã cũ không còn dùng được.</div>'+
   '</div>';
+}
+/* --- Lương --- */
+var PAY_FIELDS = [['base','Lương cơ bản (đ)','money'],['coef','Hệ số','coef'],['sales','Lương bán hàng (đ)','money'],['ship','Lương ship (đ)','money'],['bonus','Thưởng thêm (đ)','money']];
+function fmtMoney(n){ return String(Math.round(Number(n)||0)).replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
+function moneyVal(s){ return Number(String(s==null?'':s).replace(/\D/g,''))||0; }
+function coefVal(s){
+  var t = String(s==null?'':s).replace(',','.').replace(/[^0-9.]/g,''), n = parseFloat(t);
+  return isNaN(n) ? 1 : n;
+}
+function payTotal(d){ return Math.round(moneyVal(d.base)*coefVal(d.coef)) + moneyVal(d.sales) + moneyVal(d.ship) + moneyVal(d.bonus); }
+function monthLabel(m){ var p = m.split('-'); return 'Tháng '+Number(p[1])+'/'+p[0]; }
+function shiftMonth(m, dir){ var p = m.split('-'), d = new Date(Number(p[0]), Number(p[1])-1+dir, 1); return d.getFullYear()+'-'+p2(d.getMonth()+1); }
+function numStr(n){ return (n===0||n===undefined||n===null) ? '' : String(n); }
+function ensureDraft(m){
+  var P = state.pay;
+  if(P.drafts[m]) return P.drafts[m];
+  var dr = {}, sugg = false;
+  employees().forEach(function(e){
+    var row = P.rows.filter(function(r){ return r.m===m && r.u===e.u; })[0];
+    if(row){ dr[e.u] = {base:numStr(row.base), coef:String(row.coef), sales:numStr(row.sales), ship:numStr(row.ship), bonus:numStr(row.bonus)}; return; }
+    var prev = P.rows.filter(function(r){ return r.u===e.u && r.m<m; }).sort(function(a,b){ return a.m<b.m?1:-1; })[0];
+    dr[e.u] = {base:prev?numStr(prev.base):'', coef:prev?String(prev.coef):'', sales:'', ship:'', bonus:''};
+    if(prev) sugg = true;
+  });
+  dr._sugg = sugg;
+  P.drafts[m] = dr;
+  return dr;
+}
+function shipCard(){
+  var S = state.ship, line;
+  if(S.busy) line = 'Đang đọc tab Shippers…';
+  else if(S.err) line = '<span style="color:var(--danger)">'+esc(S.err)+'</span>';
+  else if(S.at) line = 'Đã đọc '+S.count+' shipper lúc '+hm(S.at)+'. Tài khoản mới có mật khẩu mặc định @123.';
+  else line = 'Chưa đọc tab Shippers.';
+  return '<div class="card"><div class="payhead"><h2>Nhân viên từ tab Shippers</h2><button class="btn sm" data-act="shipsync" type="button"'+(S.busy?' disabled':'')+'>Cập nhật</button></div>'+
+    '<div class="muted small">'+line+'</div></div>';
+}
+function payBody(){
+  var P = state.pay, m = P.month, emps = employees();
+  var parts = m.split('-'), from = new Date(Number(parts[0]), Number(parts[1])-1, 1), to = new Date(Number(parts[0]), Number(parts[1]), 0);
+  var dr = ensureDraft(m), sum = 0;
+  var cards = emps.map(function(e, i){
+    var d = dr[e.u] || (dr[e.u] = {base:'', coef:'', sales:'', ship:'', bonus:''});
+    var t = totalsFor(e.u, from, to), tot = payTotal(d); sum += tot;
+    var fields = PAY_FIELDS.map(function(f){
+      var raw = d[f[0]], shown = f[2]==='money' ? (raw ? fmtMoney(moneyVal(raw)) : '') : raw;
+      return '<label for="pf'+i+f[0]+'"'+(f[0]==='bonus'?' class="full"':'')+'>'+f[1]+
+        '<input id="pf'+i+f[0]+'" data-u="'+esc(e.u)+'" data-f="'+f[0]+'" data-k="'+f[2]+'" inputmode="'+(f[2]==='money'?'numeric':'decimal')+'" autocomplete="off" placeholder="'+(f[0]==='coef'?'1':'0')+'" value="'+esc(shown)+'"></label>';
+    }).join('');
+    return '<div class="card paycard"><div class="payhead"><h3>'+esc(e.name)+'</h3><span class="muted small num">Giờ công: '+dur(t.total)+' · '+t.days+' ngày</span></div>'+
+      '<div class="paygrid">'+fields+'</div>'+
+      '<div class="totalrow"><span class="small muted">Tổng lương</span><span class="paytotal">'+fmtMoney(tot)+' đ</span></div></div>';
+  }).join('') || '<div class="card"><div class="muted small">Chưa có nhân viên. Bấm “Cập nhật” ở tab Nhân viên để lấy từ tab Shippers.</div></div>';
+  return '<div class="card">'+
+    '<div class="nav"><button class="btn sm" data-act="paymonth" data-v="-1" type="button" aria-label="Tháng trước">‹</button><div class="lbl">'+monthLabel(m)+'</div><button class="btn sm" data-act="paymonth" data-v="1" type="button" aria-label="Tháng sau">›</button></div>'+
+    '<div class="sumline"><span class="muted small">Tổng quỹ lương</span><span class="paytotal" id="paySum">'+fmtMoney(sum)+' đ</span></div>'+
+    '<div class="formula">Tổng lương = Lương cơ bản × Hệ số + Lương bán hàng + Lương ship + Thưởng thêm</div>'+
+    (dr._sugg ? '<div class="muted small">Lương cơ bản và hệ số đang lấy theo tháng gần nhất. Bấm Lưu để chốt cho '+monthLabel(m).toLowerCase()+'.</div>' : '')+
+    '<div class="small" id="payState">'+(P.dirty[m]?'<span class="unsaved">Có thay đổi chưa lưu</span>':'<span class="muted">Đã lưu</span>')+'</div>'+
+    '<button class="btn primary" data-act="paysave" type="button"'+(P.saving||!emps.length?' disabled':'')+'>'+(P.saving?'Đang lưu…':'Lưu bảng lương')+'</button>'+
+    '</div>'+cards+
+    (emps.length>2 ? '<button class="btn primary" data-act="paysave" type="button"'+(P.saving?' disabled':'')+'>Lưu bảng lương</button>' : '');
 }
 function trackBody(){
   var emps = employees();
@@ -575,10 +675,10 @@ function trackBody(){
 function staffBody(){
   var rows = employees().map(function(e){
     var arm = state.confirmDel===e.u;
-    return '<div class="row" style="grid-template-columns:minmax(0,1fr) auto;align-items:center"><div><div class="d">'+esc(e.name)+'</div><small class="muted">Tên đăng nhập: '+esc(e.u)+'</small></div>'+
+    return '<div class="row" style="grid-template-columns:minmax(0,1fr) auto;align-items:center"><div><div class="d">'+esc(e.name)+'</div><small class="muted">Tên đăng nhập: '+esc(e.u)+(e.sp?' · Shipper: '+esc(e.sp):'')+'</small></div>'+
       '<button class="btn sm danger" type="button" data-act="del" data-v="'+esc(e.u)+'">'+(arm?'Bấm lại để xóa':'Xóa')+'</button></div>';
   }).join('') || '<div class="muted small">Chưa có nhân viên.</div>';
-  return '<div class="card"><h2>Danh sách nhân viên</h2><div class="rows">'+rows+'</div></div>'+
+  return (REMOTE ? shipCard() : '')+'<div class="card"><h2>Danh sách nhân viên</h2><div class="rows">'+rows+'</div></div>'+
     '<form class="card" id="addForm" autocomplete="off"><h2>Thêm nhân viên</h2>'+
       '<label for="nu">Tên đăng nhập<input id="nu" autocapitalize="none" spellcheck="false" required></label>'+
       '<label for="np">Mật khẩu<input id="np" required></label>'+
@@ -734,6 +834,9 @@ app.addEventListener('click', function(e){
   if(act==='next'){ shift(1); render(); return; }
   if(act==='today'){ state.anchor = new Date(); render(); return; }
   if(act==='who'){ state.who = v; render(); return; }
+  if(act==='shipsync'){ syncShippers(true); return; }
+  if(act==='paymonth'){ state.pay.month = shiftMonth(state.pay.month, Number(v)); render(); return; }
+  if(act==='paysave'){ paySave(); return; }
   if(act==='dlqr'){ downloadQR(); return; }
   if(act==='newtoken'){
     if(REMOTE){
@@ -762,6 +865,47 @@ app.addEventListener('click', function(e){
     }else state.confirmDel = v;
     render(); return;
   }
+});
+function paySave(){
+  var P = state.pay, m = P.month, dr = ensureDraft(m);
+  if(P.saving) return;
+  var items = [];
+  employees().forEach(function(e){
+    var d = dr[e.u]; if(!d) return;
+    var any = d.base || d.sales || d.ship || d.bonus || d.coef;
+    var had = P.rows.some(function(r){ return r.m===m && r.u===e.u; });
+    if(!any && !had) return;
+    items.push({u:e.u, base:moneyVal(d.base), coef:coefVal(d.coef), sales:moneyVal(d.sales), ship:moneyVal(d.ship), bonus:moneyVal(d.bonus)});
+  });
+  if(!items.length){ toast('Chưa có số liệu nào để lưu.', 'bad'); return; }
+  P.saving = true; render();
+  api('savePayroll', {month:m, items:items}).then(function(r){
+    P.saving = false;
+    if(r.ok){
+      P.rows = P.rows.filter(function(x){ return x.m!==m; }).concat(r.rows);
+      delete P.drafts[m]; P.dirty[m] = false;
+      render(); toast('Đã lưu bảng lương '+monthLabel(m).toLowerCase()+'.', 'good');
+    }else if(r.error==='auth'){ doLogout('Phiên đăng nhập không còn hợp lệ. Hãy đăng nhập lại.'); }
+    else { render(); toast(r.msg || 'Chưa lưu được bảng lương.', 'bad'); }
+  });
+}
+app.addEventListener('input', function(e){
+  var el = e.target, f = el.getAttribute && el.getAttribute('data-f'); if(!f) return;
+  var P = state.pay, dr0 = ensureDraft(P.month), d = dr0[el.getAttribute('data-u')]; if(!d) return;
+  var k = el.getAttribute('data-k'), v;
+  if(k==='money'){ v = el.value.replace(/\D/g,''); if(el.value !== v) el.value = v; }
+  else { v = el.value.replace(/[^0-9.,]/g,''); if(el.value !== v) el.value = v; }
+  d[f] = v; P.dirty[P.month] = true; delete dr0._sugg;
+  var card = el.closest('.paycard'); if(card){ var t = card.querySelector('.paytotal'); if(t) t.textContent = fmtMoney(payTotal(d))+' đ'; }
+  var sum = 0; employees().forEach(function(x){ if(dr0[x.u]) sum += payTotal(dr0[x.u]); });
+  var se = document.getElementById('paySum'); if(se) se.textContent = fmtMoney(sum)+' đ';
+  var st = document.getElementById('payState'); if(st) st.innerHTML = '<span class="unsaved">Có thay đổi chưa lưu</span>';
+});
+app.addEventListener('focusin', function(e){
+  var el = e.target; if(el.getAttribute && el.getAttribute('data-k')==='money'){ var d = ensureDraft(state.pay.month)[el.getAttribute('data-u')]; if(d) el.value = d[el.getAttribute('data-f')] || ''; }
+});
+app.addEventListener('focusout', function(e){
+  var el = e.target; if(el.getAttribute && el.getAttribute('data-k')==='money'){ var d = ensureDraft(state.pay.month)[el.getAttribute('data-u')]; if(d) el.value = d[el.getAttribute('data-f')] ? fmtMoney(moneyVal(d[el.getAttribute('data-f')])) : ''; }
 });
 app.addEventListener('submit', function(e){
   if(e.target.id==='addForm'){
