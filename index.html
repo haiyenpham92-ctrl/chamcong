@@ -600,7 +600,7 @@ function adminBody(u){
   '</div>';
 }
 /* --- Lương --- */
-var PAY_FIELDS = [['base','Lương cơ bản (đ)','money'],['coef','Hệ số','coef'],['sales','Lương bán hàng (đ)','money'],['ship','Lương ship (đ)','money'],['bonus','Thưởng thêm (đ)','money']];
+var PAY_FIELDS = [['base','Lương cơ bản (đ)','money'],['coef','Hệ số (giờ công)','coef'],['sales','Lương bán hàng (đ)','money'],['ship','Lương ship (đ)','money'],['bonus','Thưởng thêm (đ)','money']];
 function fmtMoney(n){ return String(Math.round(Number(n)||0)).replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
 function moneyVal(s){ return Number(String(s==null?'':s).replace(/\D/g,''))||0; }
 function coefVal(s){
@@ -610,22 +610,27 @@ function coefVal(s){
 function payTotal(d){ return Math.round(moneyVal(d.base)*coefVal(d.coef)) + moneyVal(d.sales) + moneyVal(d.ship) + moneyVal(d.bonus); }
 function monthLabel(m){ var p = m.split('-'); return 'Tháng '+Number(p[1])+'/'+p[0]; }
 function shiftMonth(m, dir){ var p = m.split('-'), d = new Date(Number(p[0]), Number(p[1])-1+dir, 1); return d.getFullYear()+'-'+p2(d.getMonth()+1); }
+function monthRange(m){ var p = m.split('-'); return {from:new Date(Number(p[0]), Number(p[1])-1, 1), to:new Date(Number(p[0]), Number(p[1]), 0)}; }
+function monthHours(u, m){ var r = monthRange(m), t = totalsFor(u, r.from, r.to); return {h: Math.round(t.total/36000)/100, days: t.days}; }
+function hoursStr(h){ return String(h).replace('.', ','); }
 function numStr(n){ return (n===0||n===undefined||n===null) ? '' : String(n); }
 function ensureDraft(m){
   var P = state.pay;
   if(P.drafts[m]) return P.drafts[m];
-  var dr = {}, sugg = false, autoUsed = false;
+  var dr = {}, sugg = false, autoUsed = false, hrsUsed = false;
   var A = (P.auto[m] && P.auto[m].ok) ? P.auto[m].by : null;
   employees().forEach(function(e){
     var row = P.rows.filter(function(r){ return r.m===m && r.u===e.u; })[0];
     if(row){ dr[e.u] = {base:numStr(row.base), coef:String(row.coef), sales:numStr(row.sales), ship:numStr(row.ship), bonus:numStr(row.bonus)}; return; }
     var prev = P.rows.filter(function(r){ return r.u===e.u && r.m<m; }).sort(function(a,b){ return a.m<b.m?1:-1; })[0];
     var av = (A && A[e.u]) ? A[e.u].total : 0;
-    dr[e.u] = {base:prev?numStr(prev.base):'', coef:prev?String(prev.coef):'', sales:'', ship:av?String(av):'', bonus:''};
-    if(prev) sugg = true;
+    var hh = monthHours(e.u, m).h;
+    dr[e.u] = {base:prev?numStr(prev.base):'', coef:hh>0?String(hh):'', sales:'', ship:av?String(av):'', bonus:''};
+    if(prev && prev.base) sugg = true;
     if(av) autoUsed = true;
+    if(hh>0) hrsUsed = true;
   });
-  dr._sugg = sugg; dr._auto = autoUsed;
+  dr._sugg = sugg; dr._auto = autoUsed; dr._hrs = hrsUsed;
   P.drafts[m] = dr;
   return dr;
 }
@@ -674,7 +679,7 @@ function payBody(){
     var fields = PAY_FIELDS.map(function(f){
       var raw = d[f[0]], shown = f[2]==='money' ? (raw ? fmtMoney(moneyVal(raw)) : '') : raw;
       return '<label for="pf'+i+f[0]+'"'+(f[0]==='bonus'?' class="full"':'')+'>'+f[1]+
-        '<input id="pf'+i+f[0]+'" data-u="'+esc(e.u)+'" data-f="'+f[0]+'" data-k="'+f[2]+'" inputmode="'+(f[2]==='money'?'numeric':'decimal')+'" autocomplete="off" placeholder="'+(f[0]==='coef'?'1':'0')+'" value="'+esc(shown)+'"></label>';
+        '<input id="pf'+i+f[0]+'" data-u="'+esc(e.u)+'" data-f="'+f[0]+'" data-k="'+f[2]+'" inputmode="'+(f[2]==='money'?'numeric':'decimal')+'" autocomplete="off" placeholder="'+(f[0]==='coef'?'Nhập tay':'0')+'" value="'+esc(shown)+'"></label>';
     }).join('');
     var an = (A && A.ok) ? A.by[e.u] : null, note = '';
     if(A && A.ok){
@@ -683,20 +688,28 @@ function payBody(){
         note += (moneyVal(d.ship)!==an.total) ? ' <button class="btn sm" data-act="useship" data-v="'+esc(e.u)+'" type="button">Dùng số này</button>' : ' · đã khớp';
       }else note = 'Không có đơn ship nào trong tháng này.';
     }
-    return '<div class="card paycard"><div class="payhead"><h3>'+esc(e.name)+'</h3><span class="muted small num">Giờ công: '+dur(t.total)+' · '+t.days+' ngày</span></div>'+
+    var hh = Math.round(t.total/36000)/100, hnote;
+    if(hh>0){
+      var curC = parseFloat(String(d.coef==null?'':d.coef).replace(',','.'));
+      hnote = 'Giờ công chấm công: <b class="num">'+hoursStr(hh)+' giờ</b> · '+t.days+' ngày';
+      hnote += (curC!==hh) ? ' <button class="btn sm" data-act="usehours" data-v="'+esc(e.u)+'" type="button">Dùng làm hệ số</button>' : ' · đã dùng làm hệ số';
+    }else hnote = 'Chưa có giờ công chấm công trong tháng này, hãy nhập hệ số bằng tay.';
+    return '<div class="card paycard"><div class="payhead"><h3>'+esc(e.name)+'</h3><span class="muted small num">'+dur(t.total)+'</span></div>'+
       '<div class="paygrid">'+fields+'</div>'+
+      '<div class="shipnote small muted">'+hnote+'</div>'+
       (note ? '<div class="shipnote small muted">'+note+'</div>' : '')+
       '<div class="totalrow"><span class="small muted">Tổng lương</span><span class="paytotal">'+fmtMoney(tot)+' đ</span></div></div>';
   }).join('') || '<div class="card"><div class="muted small">Chưa có nhân viên. Bấm “Cập nhật” ở tab Nhân viên để lấy từ tab Shippers.</div></div>';
   return '<div class="card">'+
     '<div class="nav"><button class="btn sm" data-act="paymonth" data-v="-1" type="button" aria-label="Tháng trước">‹</button><div class="lbl">'+monthLabel(m)+'</div><button class="btn sm" data-act="paymonth" data-v="1" type="button" aria-label="Tháng sau">›</button></div>'+
     '<div class="sumline"><span class="muted small">Tổng quỹ lương</span><span class="paytotal" id="paySum">'+fmtMoney(sum)+' đ</span></div>'+
-    '<div class="formula">Tổng lương = Lương cơ bản × Hệ số + Lương bán hàng + Lương ship + Thưởng thêm</div>'+
+    '<div class="formula">Tổng lương = Lương cơ bản × Hệ số + Lương bán hàng + Lương ship + Thưởng thêm<br>Hệ số = số giờ công chấm công trong tháng. Chưa có giờ công thì nhập tay.</div>'+
     '<div class="shiprow"><button class="btn sm" data-act="shipauto" type="button"'+(A&&A.busy?' disabled':'')+'>Lấy lương ship từ đơn hàng</button><span class="small '+(A&&A.err?'':'muted')+'"'+(A&&A.err?' style="color:var(--danger)"':'')+'>'+(A&&A.busy?'Đang đọc đơn hàng…':(A&&A.err?esc(A.err):(A&&A.ok?'Đã đọc lúc '+hm(A.at):'')))+'</span></div>'+
     ((A && A.ok && A.unmatched.length) ? '<div class="muted small">Đơn của shipper chưa có tài khoản nhân viên: '+A.unmatched.map(function(x){ return esc(x.name)+' ('+fmtMoney(x.total)+' đ)'; }).join(', ')+'. Nếu shipper này có trong tab Shippers, bấm “Cập nhật” ở tab Nhân viên để tạo tài khoản.</div>' : '')+
+    (dr._hrs ? '<div class="muted small">Hệ số đang tự lấy từ số giờ công chấm công trong tháng. Bấm Lưu để chốt cho '+monthLabel(m).toLowerCase()+'.</div>' : '')+
     (dr._auto ? '<div class="muted small">Lương ship đang tự điền từ đơn hàng. Bấm Lưu để chốt cho '+monthLabel(m).toLowerCase()+'.</div>' : '')+
-    (dr._sugg ? '<div class="muted small">Lương cơ bản và hệ số đang lấy theo tháng gần nhất. Bấm Lưu để chốt cho '+monthLabel(m).toLowerCase()+'.</div>' : '')+
-    '<div class="small" id="payState">'+((P.dirty[m]||dr._sugg||dr._auto)?'<span class="unsaved">Có thay đổi chưa lưu</span>':'<span class="muted">Đã lưu</span>')+'</div>'+
+    (dr._sugg ? '<div class="muted small">Lương cơ bản đang lấy theo tháng gần nhất. Bấm Lưu để chốt cho '+monthLabel(m).toLowerCase()+'.</div>' : '')+
+    '<div class="small" id="payState">'+((P.dirty[m]||dr._sugg||dr._auto||dr._hrs)?'<span class="unsaved">Có thay đổi chưa lưu</span>':'<span class="muted">Đã lưu</span>')+'</div>'+
     '<button class="btn primary" data-act="paysave" type="button"'+(P.saving||!emps.length?' disabled':'')+'>'+(P.saving?'Đang lưu…':'Lưu bảng lương')+'</button>'+
     '</div>'+cards+
     (emps.length>2 ? '<button class="btn primary" data-act="paysave" type="button"'+(P.saving?' disabled':'')+'>Lưu bảng lương</button>' : '');
@@ -878,6 +891,11 @@ app.addEventListener('click', function(e){
   if(act==='who'){ state.who = v; render(); return; }
   if(act==='shipsync'){ syncShippers(true); return; }
   if(act==='paymonth'){ state.pay.month = shiftMonth(state.pay.month, Number(v)); render(); maybeShipAuto(); return; }
+  if(act==='usehours'){
+    var m1 = state.pay.month, dr2 = ensureDraft(m1), hv = monthHours(v, m1).h;
+    if(dr2[v] && hv>0){ dr2[v].coef = String(hv); state.pay.dirty[m1] = true; render(); }
+    return;
+  }
   if(act==='shipauto'){ loadShipAuto(state.pay.month, true); return; }
   if(act==='useship'){
     var m0 = state.pay.month, an0 = state.pay.auto[m0] && state.pay.auto[m0].by[v], dr1 = ensureDraft(m0);
@@ -943,7 +961,7 @@ app.addEventListener('input', function(e){
   var k = el.getAttribute('data-k'), v;
   if(k==='money'){ v = el.value.replace(/\D/g,''); if(el.value !== v) el.value = v; }
   else { v = el.value.replace(/[^0-9.,]/g,''); if(el.value !== v) el.value = v; }
-  d[f] = v; P.dirty[P.month] = true; delete dr0._sugg; delete dr0._auto;
+  d[f] = v; P.dirty[P.month] = true; delete dr0._sugg; delete dr0._auto; delete dr0._hrs;
   var card = el.closest('.paycard'); if(card){ var t = card.querySelector('.paytotal'); if(t) t.textContent = fmtMoney(payTotal(d))+' đ'; }
   var sum = 0; employees().forEach(function(x){ if(dr0[x.u]) sum += payTotal(dr0[x.u]); });
   var se = document.getElementById('paySum'); if(se) se.textContent = fmtMoney(sum)+' đ';
