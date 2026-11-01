@@ -696,7 +696,7 @@ function myPayBody(u){
   if(!e.ok) return '<div class="card">'+myPayNav(m, false)+'<div class="small" style="color:var(--danger)">'+esc(e.err)+'</div></div>';
   var d = e.d, sv = d.saved, od = d.detail || {sales:{items:[],total:0,qty:0,assigned:0}, ship:{count:0,total:0}};
   var base = sv ? sv.base : (d.carryBase || 0);
-  var coefManual = !(hrs.h>0), coef = sv ? sv.coef : 0;
+  var coef = sv ? sv.coef : 0, coefManual = !!(sv && sv.modes && sv.modes.coef==='manual'), useAtt = !coefManual && hrs.h>0;
   var baseTotal = Math.round(base*coef);
   var shipCount = od.ship.count;
   var sales = sv ? sv.sales : 0, ship = sv ? sv.ship : 0, bonus = sv ? sv.bonus : 0;
@@ -716,11 +716,10 @@ function myPayBody(u){
   '</div>');
   // 2. Lương cơ bản
   parts.push('<div class="card"><h2>Lương cơ bản</h2><div class="rows">'+
-    '<div class="mrow"><span class="k">Số giờ làm việc</span><span class="v">'+(hrs.h>0 ? hoursStr(hrs.h)+' giờ · '+hrs.days+' ngày' : '0 giờ')+'</span></div>'+
+    '<div class="mrow"><span class="k">Số giờ làm việc'+(coefManual ? ' (Admin nhập)' : '')+'</span><span class="v">'+(useAtt ? hoursStr(hrs.h)+' giờ · '+hrs.days+' ngày' : hoursStr(coef)+' giờ')+'</span></div>'+
     '<div class="mrow"><span class="k">Mức lương cơ bản</span><span class="v">'+fmtMoney(base)+' đ</span></div>'+
-    (coefManual && coef>0 ? '<div class="mrow"><span class="k">Hệ số (Admin nhập)</span><span class="v">'+hoursStr(coef)+'</span></div>' : '')+
     '<div class="mrow sub"><span class="k">Thành tiền</span><span class="v">'+fmtMoney(baseTotal)+' đ</span></div>'+
-  '</div>'+(hrs.h>0 ? '' : '<div class="muted small">Chưa có giờ công chấm công trong tháng này.</div>')+'</div>');
+  '</div>'+(useAtt || coefManual ? '' : '<div class="muted small">Chưa có giờ công chấm công trong tháng này.</div>')+'</div>');
   // 3. Lương bán hàng
   var items = od.sales.items, prodHtml;
   if(!od.sales.assigned) prodHtml = '<div class="muted small">Bạn chưa được gắn sản phẩm nào để tính lương bán hàng.</div>';
