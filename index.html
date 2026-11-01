@@ -688,15 +688,13 @@ function myPayBody(u){
   var M = state.my, m = M.month, e = M.byM[m], hrs = monthHours(u.u, m);
   if(!e || (e.busy && !e.ok)) return '<div class="card">'+myPayNav(m, true)+'<div class="muted small">Đang tải bảng lương…</div></div>';
   if(!e.ok) return '<div class="card">'+myPayNav(m, false)+'<div class="small" style="color:var(--danger)">'+esc(e.err)+'</div></div>';
-  var d = e.d, sv = d.saved, od = d.orders;
+  var d = e.d, sv = d.saved, od = d.detail || {sales:{items:[],total:0,qty:0,assigned:0}, ship:{count:0,total:0}};
   var base = sv ? sv.base : (d.carryBase || 0);
-  var coefManual = !(hrs.h>0), coef = hrs.h>0 ? hrs.h : (sv ? sv.coef : 0);
+  var coefManual = !(hrs.h>0), coef = sv ? sv.coef : 0;
   var baseTotal = Math.round(base*coef);
-  var liveSales = od ? od.sales.total : 0, liveShip = od ? od.ship.total : 0, shipCount = od ? od.ship.count : 0;
-  var sales = liveSales>0 ? liveSales : (sv ? sv.sales : 0);
-  var ship = shipCount>0 ? liveShip : (sv ? sv.ship : 0);
-  var bonus = sv ? sv.bonus : 0;
-  var total = baseTotal + sales + ship + bonus;
+  var shipCount = od.ship.count;
+  var sales = sv ? sv.sales : 0, ship = sv ? sv.ship : 0, bonus = sv ? sv.bonus : 0;
+  var total = sv ? sv.total : 0;
   var parts = [];
   // 1. Tổng quan
   parts.push('<div class="card">'+myPayNav(m, e.busy)+
@@ -707,8 +705,8 @@ function myPayBody(u){
       (bonus ? '<div class="mrow"><span class="k">Thưởng thêm</span><span class="v">'+fmtMoney(bonus)+' đ</span></div>' : '')+
     '</div>'+
     '<div class="mtotal"><span>Tổng lương hiện tại</span><span class="v">'+fmtMoney(total)+' đ</span></div>'+
-    '<div class="muted small">Tạm tính theo giờ công và đơn hàng tính đến '+hm(e.at||Date.now())+' hôm nay.'+((sv && sv.total!==total) ? ' Admin đã lưu bảng lương '+monthLabel(m).toLowerCase()+' là '+fmtMoney(sv.total)+' đ.' : '')+'</div>'+
-    (d.ordersErr ? '<div class="small" style="color:var(--danger)">Chưa đọc được đơn hàng nên lương bán hàng và ship lấy theo số Admin đã lưu.</div>' : '')+
+    '<div class="muted small">Số liệu cập nhật lúc '+hm(e.at||Date.now())+', trùng với bảng lương Admin xem.</div>'+
+    (d.syncErr ? '<div class="small" style="color:var(--danger)">Chưa cập nhật được đơn hàng mới, đang hiện số đã lưu gần nhất.</div>' : '')+
   '</div>');
   // 2. Lương cơ bản
   parts.push('<div class="card"><h2>Lương cơ bản</h2><div class="rows">'+
@@ -718,14 +716,13 @@ function myPayBody(u){
     '<div class="mrow sub"><span class="k">Thành tiền</span><span class="v">'+fmtMoney(baseTotal)+' đ</span></div>'+
   '</div>'+(hrs.h>0 ? '' : '<div class="muted small">Chưa có giờ công chấm công trong tháng này.</div>')+'</div>');
   // 3. Lương bán hàng
-  var items = od ? od.sales.items : [], prodHtml;
-  if(!od) prodHtml = '<div class="muted small">Chưa đọc được dữ liệu đơn hàng.</div>';
-  else if(!od.sales.assigned) prodHtml = '<div class="muted small">Bạn chưa được gắn sản phẩm nào để tính lương bán hàng.</div>';
+  var items = od.sales.items, prodHtml;
+  if(!od.sales.assigned) prodHtml = '<div class="muted small">Bạn chưa được gắn sản phẩm nào để tính lương bán hàng.</div>';
   else prodHtml = items.map(function(it){
     return '<div class="prod"><span class="n">'+esc(it.name)+'</span><span class="q">× '+it.qty+'</span><span class="v">'+fmtMoney(it.value)+' đ</span></div>';
   }).join('');
   parts.push('<div class="card"><h2>Lương bán hàng</h2><div>'+prodHtml+'</div>'+
-    '<div class="mrow sub"><span class="k">Tổng bán hàng'+(od && od.sales.qty ? ' · '+od.sales.qty+' sản phẩm' : '')+'</span><span class="v">'+fmtMoney(sales)+' đ</span></div></div>');
+    '<div class="mrow sub"><span class="k">Tổng bán hàng'+(od.sales.qty ? ' · '+od.sales.qty+' sản phẩm' : '')+'</span><span class="v">'+fmtMoney(sales)+' đ</span></div></div>');
   // 4. Lương ship
   parts.push('<div class="card"><h2>Lương ship</h2><div class="rows">'+
     '<div class="mrow"><span class="k">Số cuốc</span><span class="v">'+shipCount+' cuốc</span></div>'+
@@ -734,7 +731,7 @@ function myPayBody(u){
   return parts.join('');
 }
 function hasPayRow(m, u){ return state.pay.rows.some(function(r){ return r.m===m && r.u===u; }); }
-function maybeShipAuto(){ var m = state.pay.month; if(REMOTE && !state.pay.auto[m]) loadShipAuto(m, false); }
+function maybeShipAuto(){ var m = state.pay.month; if(REMOTE) loadShipAuto(m, false); }
 function loadShipAuto(m, force){
   var P = state.pay, old = P.auto[m];
   if(old && old.busy) return Promise.resolve();
@@ -751,23 +748,8 @@ function loadShipAuto(m, force){
     }
     P.auto[m] = a;
     if(r.ok){
-      if(force){
-        var dr = ensureDraft(m);
-        employees().forEach(function(e){
-          var d = dr[e.u]; if(!d) return;
-          var v = a.by[e.u] ? a.by[e.u].total : 0, sv = a.sales[e.u] ? a.sales[e.u].total : 0;
-          d.ship = v ? String(v) : ''; d.sales = sv ? String(sv) : '';
-        });
-        P.dirty[m] = true;
-      }else if(!P.dirty[m]){
-        delete P.drafts[m];
-      }else if(P.drafts[m]){
-        employees().forEach(function(e){
-          var d = P.drafts[m][e.u]; if(!d || hasPayRow(m, e.u)) return;
-          if(!d.ship && a.by[e.u]) d.ship = String(a.by[e.u].total);
-          if(!d.sales && a.sales[e.u] && a.sales[e.u].total) d.sales = String(a.sales[e.u].total);
-        });
-      }
+      if(r.payroll) P.rows = r.payroll;       // số liệu đã được lưu trên sheet
+      if(!P.dirty[m]) delete P.drafts[m];
     }
     safeRender();
   });
@@ -813,13 +795,7 @@ function savePicker(){
     if(!r.ok){ toast(r.msg || 'Chưa lưu được sản phẩm.', 'bad'); return; }
     closePicker();
     toast('Đã lưu sản phẩm tính lương bán hàng.', 'good');
-    loadShipAuto(m, false).then(function(){
-      var a2 = state.pay.auto[m];
-      if(a2 && a2.ok){
-        var dr = ensureDraft(m);
-        if(dr[u]){ var v = a2.sales[u] ? a2.sales[u].total : 0; dr[u].sales = v ? String(v) : ''; state.pay.dirty[m] = true; render(); }
-      }
-    });
+    loadShipAuto(m, false);
   });
 }
 document.getElementById('pickq').addEventListener('input', function(e){ if(pick){ pick.q = e.target.value; renderPicker(); } });
@@ -888,13 +864,10 @@ function payBody(){
     '<div class="formula">Tổng lương = Lương cơ bản × Hệ số + Lương bán hàng + Lương ship + Thưởng thêm<br>Hệ số = số giờ công chấm công trong tháng. Chưa có giờ công thì nhập tay.</div>'+
     '<div class="shiprow"><button class="btn sm" data-act="shipauto" type="button"'+(A&&A.busy?' disabled':'')+'>Lấy lương ship và bán hàng từ đơn hàng</button><span class="small '+(A&&A.err?'':'muted')+'"'+(A&&A.err?' style="color:var(--danger)"':'')+'>'+(A&&A.busy?'Đang đọc đơn hàng…':(A&&A.err?esc(A.err):(A&&A.ok?'Đã đọc lúc '+hm(A.at):'')))+'</span></div>'+
     ((A && A.ok && A.unmatched.length) ? '<div class="muted small">Đơn của shipper chưa có tài khoản nhân viên: '+A.unmatched.map(function(x){ return esc(x.name)+' ('+fmtMoney(x.total)+' đ)'; }).join(', ')+'. Nếu shipper này có trong tab Shippers, bấm “Cập nhật” ở tab Nhân viên để tạo tài khoản.</div>' : '')+
-    (dr._hrs ? '<div class="muted small">Hệ số đang tự lấy từ số giờ công chấm công trong tháng. Bấm Lưu để chốt cho '+monthLabel(m).toLowerCase()+'.</div>' : '')+
-    (dr._auto ? '<div class="muted small">Lương ship và lương bán hàng đang tự điền từ đơn hàng. Bấm Lưu để chốt cho '+monthLabel(m).toLowerCase()+'.</div>' : '')+
-    (dr._sugg ? '<div class="muted small">Lương cơ bản đang lấy theo tháng gần nhất. Bấm Lưu để chốt cho '+monthLabel(m).toLowerCase()+'.</div>' : '')+
-    '<div class="small" id="payState">'+((P.dirty[m]||dr._sugg||dr._auto||dr._hrs)?'<span class="unsaved">Có thay đổi chưa lưu</span>':'<span class="muted">Đã lưu</span>')+'</div>'+
-    '<button class="btn primary" data-act="paysave" type="button"'+(P.saving||!emps.length?' disabled':'')+'>'+(P.saving?'Đang lưu…':'Lưu bảng lương')+'</button>'+
+    '<div class="small" id="payState">'+(P.saving?'<span class="muted">Đang lưu…</span>':(P.dirty[m]?'<span class="unsaved">Đang chờ lưu…</span>':'<span class="muted">Đã lưu trên Google Sheet, mọi thiết bị đều thấy.</span>'))+'</div>'+
+    '<button class="btn primary" data-act="paysave" type="button"'+(P.saving||!emps.length?' disabled':'')+'>'+(P.saving?'Đang lưu…':'Lưu ngay')+'</button>'+
     '</div>'+cards+
-    (emps.length>2 ? '<button class="btn primary" data-act="paysave" type="button"'+(P.saving?' disabled':'')+'>Lưu bảng lương</button>' : '');
+    (emps.length>2 ? '<button class="btn primary" data-act="paysave" type="button"'+(P.saving?' disabled':'')+'>Lưu ngay</button>' : '');
 }
 function trackBody(){
   var emps = employees();
@@ -1075,7 +1048,7 @@ app.addEventListener('click', function(e){
   if(act==='paymonth'){ state.pay.month = shiftMonth(state.pay.month, Number(v)); render(); maybeShipAuto(); return; }
   if(act==='usehours'){
     var m1 = state.pay.month, dr2 = ensureDraft(m1), hv = monthHours(v, m1).h;
-    if(dr2[v] && hv>0){ dr2[v].coef = String(hv); state.pay.dirty[m1] = true; render(); }
+    if(dr2[v] && hv>0){ dr2[v].coef = String(hv); state.pay.dirty[m1] = true; state.pay.ver = (state.pay.ver||0)+1; schedulePaySave(); render(); }
     return;
   }
   if(act==='mymonth'){ state.my.month = shiftMonth(state.my.month, Number(v)); render(); loadMyPay(state.my.month, false); return; }
@@ -1083,16 +1056,16 @@ app.addEventListener('click', function(e){
   if(act==='pickprod'){ openPicker(v); return; }
   if(act==='usesales'){
     var m2 = state.pay.month, an2 = state.pay.auto[m2] && state.pay.auto[m2].sales[v], dr3 = ensureDraft(m2);
-    if(an2 && dr3[v]){ dr3[v].sales = String(an2.total); state.pay.dirty[m2] = true; render(); }
+    if(an2 && dr3[v]){ dr3[v].sales = String(an2.total); state.pay.dirty[m2] = true; state.pay.ver = (state.pay.ver||0)+1; schedulePaySave(); render(); }
     return;
   }
   if(act==='shipauto'){ loadShipAuto(state.pay.month, true); return; }
   if(act==='useship'){
     var m0 = state.pay.month, an0 = state.pay.auto[m0] && state.pay.auto[m0].by[v], dr1 = ensureDraft(m0);
-    if(an0 && dr1[v]){ dr1[v].ship = String(an0.total); state.pay.dirty[m0] = true; render(); }
+    if(an0 && dr1[v]){ dr1[v].ship = String(an0.total); state.pay.dirty[m0] = true; state.pay.ver = (state.pay.ver||0)+1; schedulePaySave(); render(); }
     return;
   }
-  if(act==='paysave'){ paySave(); return; }
+  if(act==='paysave'){ paySave(false); return; }
   if(act==='dlqr'){ downloadQR(); return; }
   if(act==='newtoken'){
     if(REMOTE){
@@ -1122,9 +1095,9 @@ app.addEventListener('click', function(e){
     render(); return;
   }
 });
-function paySave(){
+function paySave(silent){
   var P = state.pay, m = P.month, dr = ensureDraft(m);
-  if(P.saving) return;
+  if(P.saving){ if(silent) P.again = true; return; }
   var items = [];
   employees().forEach(function(e){
     var d = dr[e.u]; if(!d) return;
@@ -1133,17 +1106,30 @@ function paySave(){
     if(!any && !had) return;
     items.push({u:e.u, base:moneyVal(d.base), coef:coefVal(d.coef), sales:moneyVal(d.sales), ship:moneyVal(d.ship), bonus:moneyVal(d.bonus)});
   });
-  if(!items.length){ toast('Chưa có số liệu nào để lưu.', 'bad'); return; }
-  P.saving = true; render();
+  if(!items.length){ if(!silent) toast('Chưa có số liệu nào để lưu.', 'bad'); P.dirty[m] = false; return; }
+  var ver = P.ver || 0;
+  P.saving = true; if(silent){ var st0 = document.getElementById('payState'); if(st0) st0.innerHTML = '<span class="muted">Đang lưu…</span>'; } else render();
   api('savePayroll', {month:m, items:items}).then(function(r){
     P.saving = false;
     if(r.ok){
       P.rows = P.rows.filter(function(x){ return x.m!==m; }).concat(r.rows);
-      delete P.drafts[m]; P.dirty[m] = false;
-      render(); toast('Đã lưu bảng lương '+monthLabel(m).toLowerCase()+'.', 'good');
+      if((P.ver||0) === ver){ P.dirty[m] = false; if(!silent) delete P.drafts[m]; }
+      if(silent){
+        var st = document.getElementById('payState');
+        if(st) st.innerHTML = P.dirty[m] ? '<span class="unsaved">Đang chờ lưu…</span>' : '<span class="muted">Đã lưu trên Google Sheet, mọi thiết bị đều thấy.</span>';
+      } else { render(); toast('Đã lưu bảng lương '+monthLabel(m).toLowerCase()+'.', 'good'); }
+      if(P.again || P.dirty[m]){ P.again = false; schedulePaySave(); }
     }else if(r.error==='auth'){ doLogout('Phiên đăng nhập không còn hợp lệ. Hãy đăng nhập lại.'); }
-    else { render(); toast(r.msg || 'Chưa lưu được bảng lương.', 'bad'); }
+    else {
+      var st2 = document.getElementById('payState'); if(st2) st2.innerHTML = '<span class="unsaved">Chưa lưu được, đang thử lại…</span>';
+      if(!silent){ render(); toast(r.msg || 'Chưa lưu được bảng lương.', 'bad'); }
+      else setTimeout(schedulePaySave, 4000);
+    }
   });
+}
+function schedulePaySave(){
+  var P = state.pay; clearTimeout(P.timer);
+  P.timer = setTimeout(function(){ if(P.dirty[P.month]) paySave(true); }, 900);
 }
 app.addEventListener('input', function(e){
   var el = e.target, f = el.getAttribute && el.getAttribute('data-f'); if(!f) return;
@@ -1151,11 +1137,11 @@ app.addEventListener('input', function(e){
   var k = el.getAttribute('data-k'), v;
   if(k==='money'){ v = el.value.replace(/\D/g,''); if(el.value !== v) el.value = v; }
   else { v = el.value.replace(/[^0-9.,]/g,''); if(el.value !== v) el.value = v; }
-  d[f] = v; P.dirty[P.month] = true; delete dr0._sugg; delete dr0._auto; delete dr0._hrs;
+  d[f] = v; P.dirty[P.month] = true; P.ver = (P.ver||0)+1; schedulePaySave(); delete dr0._sugg; delete dr0._auto; delete dr0._hrs;
   var card = el.closest('.paycard'); if(card){ var t = card.querySelector('.paytotal'); if(t) t.textContent = fmtMoney(payTotal(d))+' đ'; }
   var sum = 0; employees().forEach(function(x){ if(dr0[x.u]) sum += payTotal(dr0[x.u]); });
   var se = document.getElementById('paySum'); if(se) se.textContent = fmtMoney(sum)+' đ';
-  var st = document.getElementById('payState'); if(st) st.innerHTML = '<span class="unsaved">Có thay đổi chưa lưu</span>';
+  var st = document.getElementById('payState'); if(st) st.innerHTML = '<span class="unsaved">Đang chờ lưu…</span>';
 });
 app.addEventListener('focusin', function(e){
   var el = e.target; if(el.getAttribute && el.getAttribute('data-k')==='money'){ var d = ensureDraft(state.pay.month)[el.getAttribute('data-u')]; if(d) el.value = d[el.getAttribute('data-f')] || ''; }
