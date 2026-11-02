@@ -384,7 +384,7 @@ function addDays(d,n){ var x = new Date(d.getFullYear(), d.getMonth(), d.getDate
 function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 
 /* ---------- Quy tắc tính công ---------- */
-// Lần quét 1 = vào, lần 2 = ra, lần 3 = vào, ... Chỉ cặp vào-ra đủ đôi mới được cộng.
+// Mỗi ngày 1 ca: lần quét đầu tiên = giờ vào, lần quét cuối cùng = giờ ra. Chỉ quét 1 lần trong ngày thì chưa tính.
 function eventsOf(user){
   return state.logs.filter(function(l){return l.u===user;}).map(function(l){return l.t;}).sort(function(a,b){return a-b;});
 }
@@ -394,16 +394,15 @@ function byDay(user){
   return map;
 }
 function sessionsOf(ev){
-  var s = [], total = 0;
-  for(var i=0;i<ev.length;i+=2){
-    if(i+1<ev.length){ var ms = ev[i+1]-ev[i]; s.push({in:ev[i], out:ev[i+1], ms:ms}); total += ms; }
-    else s.push({in:ev[i], out:null, ms:0});
-  }
-  return {sessions:s, total:total};
+  // Mỗi ngày chỉ có 1 ca: giờ vào = lần quét đầu, giờ ra = lần quét cuối, các lần ở giữa bỏ qua
+  if(!ev || !ev.length) return {sessions:[], total:0};
+  if(ev.length<2) return {sessions:[{in:ev[0], out:null, ms:0, n:1}], total:0};
+  var ms = ev[ev.length-1]-ev[0];
+  return {sessions:[{in:ev[0], out:ev[ev.length-1], ms:ms, n:ev.length}], total:ms};
 }
 function statusToday(user){
   var ev = byDay(user)[dkeyD(new Date())] || [];
-  return {inside: ev.length%2===1, count: ev.length, total: sessionsOf(ev).total};
+  return {inside: ev.length===1, count: ev.length, total: sessionsOf(ev).total};
 }
 function range(mode, anchor){
   if(mode==='day'){ var a = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()); return {from:a, to:a}; }
@@ -535,7 +534,7 @@ function userBody(u){
   return '<div class="card">'+
       '<div class="clock"><span class="eyebrow">'+DOW[now.getDay()]+', '+dm(now)+'/'+now.getFullYear()+'</span><span class="t num" id="clk">--:--:--</span>'+chip+'</div>'+
       '<button class="btn primary big" data-act="scan" type="button">'+IC.scan.replace('<svg','<svg width="26" height="26"')+'Quét mã QR chấm công</button>'+
-      '<div class="muted small">Lần quét đầu tiên là giờ vào, lần thứ hai là giờ ra. Chỉ có giờ vào mà chưa có giờ ra thì chưa được tính.</div>'+
+      '<div class="muted small">Lần quét đầu tiên trong ngày là giờ vào, lần quét cuối cùng là giờ ra. Các lần quét ở giữa không ảnh hưởng. Chỉ quét 1 lần thì chưa được tính.</div>'+
     '</div>'+
     '<div class="tiles">'+
       '<div class="tile"><span class="v">'+dur(st.total)+'</span><span class="k">Hôm nay</span></div>'+
@@ -548,7 +547,7 @@ function sessionRows(ev){
   var r = sessionsOf(ev);
   return r.sessions.map(function(s){
     return '<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><div class="sess num">'+
-      (s.out ? hm(s.in)+' → '+hm(s.out) : hm(s.in)+' → <span class="open">chưa có giờ ra, chưa tính</span>')+
+      (s.out ? hm(s.in)+' → '+hm(s.out)+(s.n>2 ? ' <span class="muted">('+s.n+' lượt quét)</span>' : '') : hm(s.in)+' → <span class="open">chưa có giờ ra, chưa tính</span>')+
       '</div><div class="tot num">'+(s.out?dur(s.ms):'—')+'</div></div>';
   }).join('');
 }
@@ -917,7 +916,7 @@ function handleScan(raw){
   var evs = eventsOf(u.u), last = evs[evs.length-1], now = Date.now();
   if(last && now-last < 15000) return {ok:false, retry:false, title:'Bạn vừa quét xong', msg:'Chờ vài giây rồi quét lại nếu cần.'};
   var today = byDay(u.u)[dkeyD(new Date())] || [];
-  var isIn = today.length%2===0;
+  var isIn = today.length===0;
   state.logs.push({u:u.u, t:now}); save(K.logs, state.logs);
   if(isIn) return {ok:true, title:'Đã ghi giờ vào', msg:'Lúc '+hm(now)+'.'};
   var tot = sessionsOf(byDay(u.u)[dkeyD(new Date())]).total;
