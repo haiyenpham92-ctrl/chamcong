@@ -155,6 +155,9 @@ input::placeholder{color:var(--muted)}
 .prow:first-child{border-top:0}
 .prow input{width:22px;height:22px;min-height:0;flex:none;margin-top:2px;padding:0;accent-color:var(--accent)}
 .pname{display:flex;flex-direction:column;min-width:0;overflow-wrap:anywhere}
+.edrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.edrow label{display:flex;flex-direction:column;gap:5px;font-size:.85rem;color:var(--muted)}
+.edit{margin-left:6px}
 .pbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .mrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
 .mrow:first-child{border-top:0}
@@ -218,6 +221,18 @@ details summary::-webkit-details-marker{display:none}
     <div class="plist" id="pickList"></div>
     <div class="small muted" id="pickCount"></div>
     <div class="pbtns"><button class="btn" id="pickCancel" type="button">Đóng</button><button class="btn primary" id="pickSave" type="button">Lưu</button></div>
+  </div>
+</div>
+<div class="picker" id="dayEd" hidden role="dialog" aria-modal="true" aria-labelledby="edTitle">
+  <div class="pcard">
+    <h2 id="edTitle"></h2>
+    <div class="edrow">
+      <label for="edIn">Giờ vào<input id="edIn" type="time"></label>
+      <label for="edOut">Giờ ra<input id="edOut" type="time"></label>
+    </div>
+    <div class="small muted">Giờ này sẽ thay cho tất cả lượt quét của ngày. Để trống cả hai ô rồi lưu để xóa chấm công của ngày này.</div>
+    <div class="err" id="edErr" role="alert"></div>
+    <div class="pbtns"><button class="btn" id="edCancel" type="button">Đóng</button><button class="btn primary" id="edSave" type="button">Lưu</button></div>
   </div>
 </div>
 <div class="result bad" id="result" hidden role="alertdialog" aria-modal="true" aria-labelledby="rTitle">
@@ -563,7 +578,8 @@ function historyCard(user){
   var map = byDay(user), rows = '';
   for(var d = new Date(rg.from); d <= rg.to; d = addDays(d,1)){
     var ev = map[dkeyD(d)];
-    var dlab = '<div class="d">'+DOW[d.getDay()]+' '+dm(d)+'</div>';
+    var canEdit = REMOTE && me() && me().role==='admin';
+    var dlab = '<div class="d">'+DOW[d.getDay()]+' '+dm(d)+(canEdit ? '<br><button class="btn sm" type="button" data-act="editday" data-u="'+esc(user)+'" data-d="'+dkeyD(d)+'">Sửa</button>' : '')+'</div>';
     if(!ev){
       if(state.mode==='month') continue;
       rows += '<div class="row empty">'+dlab.replace('class="d"','class="d"')+'<div class="sess">Không có lượt quét</div><div class="tot num">—</div></div>';
@@ -808,8 +824,36 @@ document.getElementById('pickList').addEventListener('change', function(e){
   if(c && pick){ pick.sel[c] = e.target.checked; renderPicker(); }
 });
 document.getElementById('pickCancel').addEventListener('click', closePicker);
+var edit = null;
+function openDayEdit(u, dk){
+  var emp = findUser(u), ev = (byDay(u)[dk] || []);
+  edit = {u:u, d:dk, busy:false};
+  var p = dk.split('-');
+  document.getElementById('edTitle').textContent = 'Sửa giờ: '+(emp?emp.name:u)+' · '+p[2]+'/'+p[1]+'/'+p[0];
+  document.getElementById('edIn').value = ev.length ? hm(ev[0]) : '';
+  document.getElementById('edOut').value = ev.length>1 ? hm(ev[ev.length-1]) : '';
+  document.getElementById('edErr').textContent = '';
+  document.getElementById('dayEd').hidden = false;
+  document.getElementById('edIn').focus();
+}
+function closeDayEdit(){ edit = null; document.getElementById('dayEd').hidden = true; }
+document.getElementById('edCancel').addEventListener('click', closeDayEdit);
+document.getElementById('edSave').addEventListener('click', function(){
+  if(!edit || edit.busy) return;
+  var tin = document.getElementById('edIn').value, tout = document.getElementById('edOut').value, er = document.getElementById('edErr'), b = this;
+  if(tout && !tin){ er.textContent = 'Cần nhập giờ vào trước khi nhập giờ ra.'; return; }
+  if(tin && tout && tout <= tin){ er.textContent = 'Giờ ra phải sau giờ vào.'; return; }
+  edit.busy = true; b.disabled = true; er.textContent = '';
+  api('setDay', {who:edit.u, date:edit.d, tin:tin, tout:tout}).then(function(r){
+    b.disabled = false; if(edit) edit.busy = false;
+    if(r.error==='auth'){ closeDayEdit(); doLogout('Phiên đăng nhập không còn hợp lệ. Hãy đăng nhập lại.'); return; }
+    if(!r.ok){ er.textContent = r.msg || 'Chưa lưu được.'; return; }
+    closeDayEdit(); toast('Đã sửa giờ chấm công.', 'good');
+    state.pay.auto = {}; refresh().then(function(){ if(state.tab==='pay') maybeShipAuto(); });
+  });
+});
 document.getElementById('pickSave').addEventListener('click', savePicker);
-document.addEventListener('keydown', function(e){ if(e.key==='Escape' && pick) closePicker(); });
+document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ if(pick) closePicker(); if(edit) closeDayEdit(); } });
 function shipCard(){
   var S = state.ship, line;
   if(S.busy) line = 'Đang đọc tab Shippers…';
@@ -1073,6 +1117,7 @@ app.addEventListener('click', function(e){
     if(an0 && dr1[v]){ dr1[v].ship = String(an0.total); state.pay.dirty[m0] = true; state.pay.ver = (state.pay.ver||0)+1; schedulePaySave(); render(); }
     return;
   }
+  if(act==='editday'){ openDayEdit(b.getAttribute('data-u'), b.getAttribute('data-d')); return; }
   if(act==='pmode'){
     var P8 = state.pay, dm = ensureDraft(P8.month)[b.getAttribute('data-u')], fm = b.getAttribute('data-f');
     if(dm && (v==='auto' || v==='manual')){
